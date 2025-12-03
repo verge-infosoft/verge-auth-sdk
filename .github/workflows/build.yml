@@ -32,7 +32,7 @@ jobs:
       # ----------------------------------------
       - name: Run Cython compile pipeline
         run: |
-          python cythonize_sources.py build_ext --inplace
+          python setup.py build_ext --inplace
 
       # ----------------------------------------
       # 📦 Build wheels + source distribution

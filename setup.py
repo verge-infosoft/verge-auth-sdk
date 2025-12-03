@@ -1,27 +1,29 @@
-from setuptools import setup, Extension, find_packages
+from setuptools import setup, Extension
 from Cython.Build import cythonize
 
 extensions = [
-    Extension("verge_auth_sdk.secret_provider", [
-              "verge_auth_sdk/secret_provider.py"]),
-    Extension("verge_auth_sdk.verge_routes", [
-              "verge_auth_sdk/verge_routes.py"]),
-    Extension("verge_auth_sdk.middleware", ["verge_auth_sdk/middleware.py"]),
+    Extension(
+        "verge_auth_sdk.middleware",
+        sources=["verge_auth_sdk/middleware.py"],
+    ),
+    Extension(
+        "verge_auth_sdk.secret_provider",
+        sources=["verge_auth_sdk/secret_provider.py"],
+    ),
+    Extension(
+        "verge_auth_sdk.verge_routes",
+        sources=["verge_auth_sdk/verge_routes.py"],
+    ),
 ]
 
 setup(
-    name="verge_auth_sdk",
-    version="0.1.4",
-    packages=find_packages(),
-    ext_modules=cythonize(extensions, compiler_directives={
-                          "language_level": "3"}),
+    name="verge-auth-sdk",
+    version="0.1.5",
+    packages=["verge_auth_sdk"],
+    ext_modules=cythonize(
+        extensions,
+        compiler_directives={"language_level": "3"},
+        annotate=False
+    ),
     include_package_data=True,
-    zip_safe=False,
-    package_data={
-        "verge_auth_sdk": ["*.pyd"],
-    },
-    exclude_package_data={
-        "verge_auth_sdk": ["*.py"],
-    },
-
 )

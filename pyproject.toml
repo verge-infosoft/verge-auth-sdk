@@ -1,6 +1,6 @@
 [project]
 name = "verge-auth-sdk"
-version = "0.1.4"
+version = "0.1.5"
 description = "Secure centralized authentication SDK for FastAPI microservices"
 readme = "README.md"
 requires-python = ">=3.8"
@@ -26,3 +26,11 @@ requires = [
     "Cython>=3.0"
 ]
 build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["verge_auth_sdk"]
+
+[tool.setuptools.extension]
+middleware = { sources = ["verge_auth_sdk/middleware.py"] }
+secret_provider = { sources = ["verge_auth_sdk/secret_provider.py"] }
+verge_routes = { sources = ["verge_auth_sdk/verge_routes.py"] }
