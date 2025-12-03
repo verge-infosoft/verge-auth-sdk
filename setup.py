@@ -1,5 +1,7 @@
 from setuptools import setup, Extension
 from Cython.Build import cythonize
+from setuptools import setup
+setup()
 
 extensions = [
     Extension(
@@ -18,7 +20,7 @@ extensions = [
 
 setup(
     name="verge-auth-sdk",
-    version="0.1.6",
+    version="0.1.7",
     packages=["verge_auth_sdk"],
     ext_modules=cythonize(
         extensions,
