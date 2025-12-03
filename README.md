@@ -1,254 +1,232 @@
 🔐 Verge Auth SDK
-Plug-and-Play Central Authentication for FastAPI & Microservices
+Secure Identity & Access Management for FastAPI Microservices
 
-Verge Auth SDK is a production-ready authentication & authorization middleware designed for microservices, SaaS platforms, and enterprise systems that require:
+Verge Auth SDK is a lightweight integration library that connects your FastAPI microservices to the Verge Auth Platform — a centralized identity, role management, and access-control system built for modern SaaS applications.
 
-Centralized login
-
-Role-based access control (RBAC)
-
-Dynamic permissions
-
-Secure service-to-service validation
-
-Automated microservice route discovery
-
-With one line of code, your service becomes fully authenticated:
+With a single line of code, your service is fully protected and becomes part of a unified authentication ecosystem:
 
 from verge_auth_sdk import add_central_auth
 add_central_auth(app)
 
-🚀 Key Features
-🔑 Centralized Authentication
+🚀 What Verge Auth Provides
 
-All microservices share a unified login system via Verge Auth Server.
+✓ Centralized Login
 
-🧠 Intelligent Token Handling
+Your users authenticate through the Verge Auth hosted login experience.
 
-Validates JWT access tokens
+✓ Role-Based Access Control (RBAC)
 
-Supports cookies (browser) and headers (API clients)
+Create roles inside the Verge Auth Dashboard and assign access to microservices and their granular operations.
 
-Automatically redirects HTML clients to login
+✓ Route-Level Permissions
 
-🔒 RBAC (Role Based Access Control)
+When a service integrates the SDK, its available routes automatically appear in the Verge Auth dashboard for permissions assignment.
 
-Role-aware request context is attached to each request:
+✓ Group & User Management
 
-request.state.user
-request.state.roles
+Assign roles to users or user groups for highly flexible access control.
 
-🌐 Multi-Service Support
+✓ Secure Communication
 
-Perfect for:
+All microservice-to-auth communication is secured using service credentials provided during onboarding.
 
-HRMS
+🧭 End-to-End User Flow
 
-ERP
+1. Account Creation
 
-CRM
+Users sign up with their organization details, company domain, and email.
 
-Billing
+2. Email Verification
 
-Appointment systems
+A verification link is sent from no-reply@vergeinfosoft.com
+.
+Once verified, the user is redirected to the Verge Auth platform.
 
-Admin dashboards
+3. Login
 
-🤖 Automated Microservice Route Discovery
+Users can sign in through the “Verge IAM” login page using their verified email and password.
 
-The SDK automatically exposes all your microservice’s routes through:
+4. Auth Dashboard
 
-GET /**verge**/routes
+Once logged in, the dashboard displays:
 
-These routes are:
+Total users
 
-Synced into Verge Auth Server
+Active groups
 
-Used for RBAC configuration
+Available roles
 
-Visible in the RBAC UI for assigning permissions
+Audit logs
 
-Automatically validated on every request
+Permissions overview
 
-🛡 Service-to-Service Secret Validation
+🎛 Role-Based Access Control (RBAC)
 
-Each microservice must present:
+RBAC inside Verge Auth is designed to be extremely intuitive — while supporting enterprise-level control.
 
-X-Verge-Service-Secret: <shared-secret>
+Creating a Role
 
-This prevents fake/rogue services from registering routes or bypassing auth.
+Inside the Roles section:
 
-🏗 Architecture Overview
-User → Client App
-↓
-Verge Auth SDK Middleware
-↓
-Verge Auth Server (Introspection / RBAC)
-↓
-Allow / Reject
+Click New Role
 
-Example URLs:
+Enter the role name (e.g., HR Manager, Operations Admin)
 
-Component URL
-Auth Backend API https://xyz.com/api
+Optional: Add a description
 
-Login UI https://xyz.com/login
+Select the Service you want this role to access
 
-Client Application https://clientapp.com
-📦 Installation
-From PyPI
+Example: employees-service, billing-service, appointments-service
+
+After selecting a service, the system automatically shows all available routes for that service
+
+Example:
+
+/employees/
+
+/employees/{id}
+
+/employees/create
+
+/employees/update
+
+/employees/delete
+
+Each route is presented with clear CRUD permissions:
+
+Create
+
+Read
+
+Update
+
+Delete
+
+You can either:
+
+Grant Full Access to that service
+
+OR choose granular permissions route-by-route
+
+Save the role
+
+It instantly becomes available for assignment
+
+Role creation modal with a dropdown for service selection and an auto-generated route list for CRUD assignment.
+
+🧑‍🤝‍🧑 Assigning Roles to Users or Groups
+
+After creating a role, you can:
+
+Assign to a User
+
+Go to Manage Users
+
+Edit a user
+
+Select one or more roles
+
+Save changes
+
+Assign to a User Group
+
+Create a group (e.g., HR Team, Finance Department)
+
+Assign roles to the group
+
+Add users into the group
+(they automatically inherit the group’s permissions)
+
+This makes onboarding smoother and keeps role management scalable.
+
+🔌 Integrating the SDK Into a Microservice
+Install from PyPI
 pip install verge_auth_sdk
 
-From GitHub
-pip install git+https://github.com/verge-infosoft/verge-auth.git
-
-⚙️ Environment Configuration
-
-Add the following to your service’s .env file:
-
-🔐 Core Authentication
-AUTH_INTROSPECT_URL=https://xyz.com/api/introspect
-AUTH_LOGIN_URL=https://xyz.com/login
-
-🆔 Client Credentials
-VERGE_CLIENT_ID=your_client_id
-VERGE_CLIENT_SECRET=your_client_secret
-
-🔐 Critical Setting — REQUIRED
-
-Shared Service Secret (MANDATORY)
-
-VERGE_SERVICE_SECRET=<your-shared-secret>
-
-⚠️ Required for:
-
-Automated microservice route discovery
-
-Registering routes inside RBAC UI
-
-Securing /**verge**/routes
-
-Service-to-service authentication
-
-Preventing unauthorized microservices
-
-👉 Without this secret, automated route discovery WILL NOT WORK.
-👉 Contact Verge Infosoft to obtain your unique VERGE_SERVICE_SECRET.
-
-🔐 Secret Provider Options
-SECRETS_PROVIDER=env # env | azure | aws
-AZURE_KEY_VAULT_URL=unused
-AWS_REGION=unused
-
-🚀 One-Line Integration
+Add the Middleware
 from fastapi import FastAPI
 from verge_auth_sdk import add_central_auth
 
 app = FastAPI()
 add_central_auth(app)
 
-That’s it. ✔
-Your service is now centrally authenticated.
+That’s it.
+The service will now:
 
-🔄 Authentication Flow
-1️⃣ User opens a protected page
-GET https://clientapp.com/employees
+✓ Authenticate incoming requests
+✓ Communicate securely with Verge Auth
+✓ Provide user identity + roles
+✓ Automatically register its routes for RBAC assignment
 
-2️⃣ No token found → redirect to Login UI
-https://xyz.com/login?redirect_url=https://clientapp.com/employees
+⚙ Environment Configuration
 
-3️⃣ After login → redirected back with token
-https://clientapp.com/employees?token=<JWT_TOKEN>
+Each service requires a minimal set of environment variables:
 
-4️⃣ SDK validates token via introspection
-POST /introspect
+######################################################################
 
-5️⃣ Access granted or denied
-🔌 Automated Route Discovery
+AUTH_INTROSPECT_URL=<auth-server-introspection-endpoint>
+AUTH_LOGIN_URL=<auth-server-login-ui>
 
-SDK automatically discovers all routes at startup:
+VERGE_CLIENT_ID=<client-id>
+VERGE_CLIENT_SECRET=<client-secret>
 
-GET /**verge**/routes
+VERGE_SERVICE_SECRET=<service-integration-secret>
 
-Used for:
+# These are provided by Verge Infosoft during onboarding.
 
-Syncing routes with Verge Auth Server
+# Optional secret provider:
 
-Dynamic RBAC assignment
+SECRETS_PROVIDER=env # azure | aws
 
-Microservice-level permission control
+########################################################################
 
-Example output:
+🛡 Middleware Responsibilities
 
-[
-{"path": "/employees/", "method": "POST"},
-{"path": "/employees/{id}", "method": "GET"},
-{"path": "/health", "method": "GET"}
-]
+The SDK transparently handles:
 
-🧑‍💼 Role-Based Access Control (RBAC)
+User authentication
 
-Verge Auth Server allows assigning permissions per route:
+Role injection
 
-Role Access
-Super Admin All services + admin dashboard
-Admin Everything except super-admin controls
-User Redirected to assigned application UI
-Custom Roles Supported
+Cookie vs header auth
 
-Dynamic RBAC is managed in the UI — no code changes needed.
+Unauthorized access responses
 
-🧰 Middleware Behavior
+Service-level authentication
 
-The SDK automatically:
+Route registration
 
-✔ Validates JWT tokens
-✔ Accepts cookies or Authorization header
-✔ Redirects HTML clients to login
-✔ Returns 401 Unauthorized for APIs
-✔ Provides user + roles to each request
-✔ Supports service-to-service authentication
-✔ Whitelists internal system routes
+You do not need to implement any auth or RBAC logic manually.
 
-🔐 Security Features
+🔐 Security Highlights
 
-RSA-based JWT (RS256)
+RSA-based JWT verification
 
-Client ID / Secret validation
+Centralized session & token lifecycle management
 
-Token expiry enforcement
+Strong encryption for service credentials
 
-Role-aware access restriction
+Multi-layer permission checks (Role → Service → Route → Operation)
 
-Encrypted service-secret validation
+HTTPS-only communication
 
-Secure HTTPS communication
+Support for cloud key vaults
 
-Ready for distributed caching (Redis)
+💼 Ideal For
 
-🌍 Example Use Cases
-Example: /employee
-Role Behavior
-Super Admin Global admin dashboard
-Admin Limited admin screen
-User Redirected to user UI
-❓ FAQ
-Do I need to host authentication myself?
+HRMS, ERP, CRM, Billing platforms
 
-❌ No — Verge Auth is hosted for you.
-Self-hosting is available for enterprise plans.
+Multi-tenant SaaS applications
 
-Does it support microservices?
+Modern microservice architectures
 
-✔ Built specifically for microservices.
+Secure admin dashboards
 
-Does it support multi-tenant SaaS?
+Enterprise platforms needing consistent access control
 
-✔ Yes, natively.
+🆘 Support & Onboarding
 
-🆘 Support
-
-For integration help:
+For enterprise onboarding, custom integrations, or troubleshooting:
 
 🌐 Website
 https://www.vergeinfosoft.com

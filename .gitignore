@@ -1,14 +1,19 @@
-# Python build artifacts
+# Build artifacts
 build/
 dist/
-*.egg-info/
-
-# Python cache
-__pycache__/
+*.egg-info
 *.pyc
+__pycache__/
 
-# Env files
-.env
+# Cython outputs
+verge_auth_sdk/*.c
+verge_auth_sdk/*.pyd
+verge_auth_sdk/*.so
+verge_auth_sdk/*.dylib
 
-# OS files
-.DS_Store
+# IDE / Editor
+.vscode/
+.idea/
+
+# Pyarmor
+.pyarmor/

@@ -1,16 +1,14 @@
 [project]
-name = "verge_auth_sdk"
-version = "0.0.13"
-description = "Plug-and-play centralized authentication SDK for FastAPI microservices"
+name = "verge-auth-sdk"
+version = "0.1.0"
+description = "Secure centralized authentication SDK for FastAPI microservices"
 readme = "README.md"
-keywords = ["fastapi", "authentication", "sdk", "microservices", "rbac", "jwt"]
+requires-python = ">=3.8"
 license = { text = "MIT" }
 
 authors = [
     { name = "Verge Infosoft", email = "contactus@vergeinfosoft.com" }
 ]
-
-requires-python = ">=3.9"
 
 dependencies = [
     "fastapi",
@@ -19,10 +17,12 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://vergeinfosoft.com"
-Documentation = "https://vergeinfosoft.com"
-Source = "https://github.com/verge-infosoft/verge-auth"
+Homepage = "https://www.vergeinfosoft.com"
 
 [build-system]
-requires = ["setuptools>=61.0", "wheel"]
+requires = [
+    "setuptools>=61.0",
+    "wheel",
+    "Cython>=3.0"
+]
 build-backend = "setuptools.build_meta"
