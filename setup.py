@@ -1,11 +1,12 @@
 from setuptools import setup, find_packages
 
 setup(
-    name="verge-auth",
-    version="0.1.1",
+    name="verge_auth_sdk",
+    version="0.0.13",
     packages=find_packages(),
     install_requires=[
         "fastapi",
-        "httpx"
+        "httpx",
+        "python-dotenv",
     ],
 )
