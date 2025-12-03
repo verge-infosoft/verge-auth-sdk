@@ -22,12 +22,22 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install build dependencies
+      - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install build cython setuptools wheel
+          pip install cython build setuptools wheel
 
-      - name: Build wheel
+      # -------------------------------
+      # ⚡ COMPILE USING CYTHON
+      # -------------------------------
+      - name: Run Cython compile pipeline
+        run: |
+          python cythonize_sources.py
+
+      # -------------------------------
+      # ⚡ Build wheels
+      # -------------------------------
+      - name: Build Wheel
         run: |
           python -m build
 
