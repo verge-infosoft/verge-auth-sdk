@@ -18,7 +18,7 @@ extensions = [
 
 setup(
     name="verge-auth-sdk",
-    version="0.1.5",
+    version="0.1.6",
     packages=["verge_auth_sdk"],
     ext_modules=cythonize(
         extensions,

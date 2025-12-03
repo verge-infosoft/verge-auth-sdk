@@ -1,6 +1,6 @@
 [project]
 name = "verge-auth-sdk"
-version = "0.1.5"
+version = "0.1.6"
 description = "Secure centralized authentication SDK for FastAPI microservices"
 readme = "README.md"
 requires-python = ">=3.8"
