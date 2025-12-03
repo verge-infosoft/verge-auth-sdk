@@ -25,21 +25,21 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install cython build setuptools wheel
+          pip install setuptools wheel cython build
 
-      # -------------------------------
-      # ⚡ COMPILE USING CYTHON
-      # -------------------------------
+      # ----------------------------------------
+      # 🔥 Compile extensions using Cython
+      # ----------------------------------------
       - name: Run Cython compile pipeline
         run: |
-          python cythonize_sources.py
+          python cythonize_sources.py build_ext --inplace
 
-      # -------------------------------
-      # ⚡ Build wheels
-      # -------------------------------
+      # ----------------------------------------
+      # 📦 Build wheels + source distribution
+      # ----------------------------------------
       - name: Build Wheel
         run: |
-          python -m build
+          python -m build --wheel --sdist
 
       - name: Upload wheels as build artifacts
         uses: actions/upload-artifact@v4
