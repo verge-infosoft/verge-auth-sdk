@@ -1,6 +1,6 @@
 [project]
 name = "verge-auth-sdk"
-version = "0.1.9"
+version = "0.1.10"
 description = "Secure centralized authentication SDK for FastAPI microservices"
 readme = "README.md"
 requires-python = ">=3.8"
@@ -20,15 +20,8 @@ dependencies = [
 Homepage = "https://www.vergeinfosoft.com"
 
 [build-system]
-requires = [
-    "setuptools>=61.0",
-    "wheel",
-    "Cython>=3.0"
-]
+requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
-
-[tool.setuptools]
-include-package-data = true
 
 [tool.setuptools.packages.find]
 include = ["verge_auth_sdk"]

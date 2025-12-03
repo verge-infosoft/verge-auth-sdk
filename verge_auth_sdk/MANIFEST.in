@@ -1,2 +1,0 @@
-recursive-exclude verge_auth_sdk *.py
-recursive-exclude verge_auth_sdk *.pyc

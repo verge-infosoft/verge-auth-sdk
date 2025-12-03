@@ -1,13 +1,14 @@
 #!/bin/bash
 
-echo "Cleaning build folders..."
-rm -rf build dist verge_auth_sdk/*.c verge_auth_sdk/*.pyd
+echo "Cleaning previous builds..."
+rm -rf build dist *.egg-info
+rm -rf verge_auth_sdk/*.c verge_auth_sdk/*.so verge_auth_sdk/*.pyd
 
 echo "Installing build deps..."
-pip install --upgrade pip setuptools wheel build cython
+pip install --upgrade pip build
 
-echo "Building wheel..."
-python setup.py bdist_wheel
+echo "Building wheel and sdist..."
+python -m build
 
-echo "DONE. Wheels in dist/"
+echo "DONE. Wheels in dist/:"
 ls dist
