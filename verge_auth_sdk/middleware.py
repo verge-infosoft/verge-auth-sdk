@@ -4,7 +4,7 @@ from .secret_provider import get_secret
 from .verge_routes import router as verge_routes_router
 import httpx
 import os
-import asyncio   # ✅ needed for retry logic
+import asyncio
 
 REGISTERED_ROUTES = []
 
@@ -83,15 +83,15 @@ def add_central_auth(app: FastAPI):
         print("✅ Collected routes:", REGISTERED_ROUTES)
 
         print("\n📡 Registering service with Auth Service...")
-        print("SERVICE_NAME =", SERVICE_NAME)
-        print("SERVICE_BASE_URL =", SERVICE_BASE_URL)
-        print("AUTH_REGISTER_URL =", AUTH_REGISTER_URL)
-        print("AUTH_ROUTE_SYNC_URL =", AUTH_ROUTE_SYNC_URL)
-        print("VERGE_SERVICE_SECRET =",
-              VERGE_SERVICE_SECRET if VERGE_SERVICE_SECRET else "MISSING")
-        print("CLIENT_ID =", CLIENT_ID if CLIENT_ID else "MISSING")
-        print("CLIENT_SECRET =",
-              CLIENT_SECRET if CLIENT_SECRET else "MISSING")
+        # print("SERVICE_NAME =", SERVICE_NAME)
+        # print("SERVICE_BASE_URL =", SERVICE_BASE_URL)
+        # print("AUTH_REGISTER_URL =", AUTH_REGISTER_URL)
+        # print("AUTH_ROUTE_SYNC_URL =", AUTH_ROUTE_SYNC_URL)
+        # print("VERGE_SERVICE_SECRET =",
+        #       VERGE_SERVICE_SECRET if VERGE_SERVICE_SECRET else "MISSING")
+        # print("CLIENT_ID =", CLIENT_ID if CLIENT_ID else "MISSING")
+        # print("CLIENT_SECRET =",
+        #       CLIENT_SECRET if CLIENT_SECRET else "MISSING")
 
         async with httpx.AsyncClient() as client:
             if AUTH_REGISTER_URL:
