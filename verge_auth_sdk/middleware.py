@@ -5,11 +5,30 @@ from .verge_routes import router as verge_routes_router
 import httpx
 import os
 import asyncio
+import jwt
 
 REGISTERED_ROUTES = []
 
+# ============================================================
+# GLOBAL JWT CACHE (PROCESS SAFE)
+# ============================================================
+JWT_PUBLIC_KEY: str | None = None
+JWT_KEY_ID: str | None = None
+JWT_ALGORITHMS = ["RS256"]
 
-async def _post_with_retries(client, url, json=None, headers=None, timeout=10, retries=8, backoff=1):
+
+# -----------------------------------------------------------
+# HTTP helper with retries (UNCHANGED)
+# -----------------------------------------------------------
+async def _post_with_retries(
+    client,
+    url,
+    json=None,
+    headers=None,
+    timeout=10,
+    retries=8,
+    backoff=1,
+):
     last_exc = None
     for attempt in range(1, retries + 1):
         try:
@@ -19,18 +38,58 @@ async def _post_with_retries(client, url, json=None, headers=None, timeout=10, r
                 headers=headers,
                 timeout=timeout,
             )
-            return resp  # success
+            return resp
         except Exception as e:
             last_exc = e
             print(
-                f"❗ Retry {attempt}/{retries} failed for {url}: {type(e).__name__}: {e}")
-            await asyncio.sleep(backoff * attempt)  # linear backoff
+                f"❗ Retry {attempt}/{retries} failed for {url}: "
+                f"{type(e).__name__}: {e}"
+            )
+            await asyncio.sleep(backoff * attempt)
     raise last_exc
 
 
+# -----------------------------------------------------------
+# PUBLIC KEY DISCOVERY (AUTH SERVICE = SOURCE OF TRUTH)
+# -----------------------------------------------------------
+async def load_public_key(force: bool = False):
+    """
+    Loads and caches the JWT public key from auth-service.
+    Safe to call multiple times.
+    """
+    global JWT_PUBLIC_KEY, JWT_KEY_ID
+
+    if JWT_PUBLIC_KEY and not force:
+        return
+
+    AUTH_PUBLIC_KEY_URL = os.getenv("AUTH_PUBLIC_KEY_URL")
+    if not AUTH_PUBLIC_KEY_URL:
+        print("❌ AUTH_PUBLIC_KEY_URL not set")
+        return
+
+    try:
+        async with httpx.AsyncClient(timeout=5) as client:
+            resp = await client.get(AUTH_PUBLIC_KEY_URL)
+            resp.raise_for_status()
+            data = resp.json()
+
+            JWT_PUBLIC_KEY = data.get("public_key")
+            JWT_KEY_ID = data.get("kid")
+
+            if JWT_PUBLIC_KEY:
+                print("✅ JWT public key loaded from auth service")
+            else:
+                print("❌ JWT public key missing in response")
+
+    except Exception as e:
+        print("❌ Failed to load JWT public key:", str(e))
+
+
+# -----------------------------------------------------------
+# MAIN INTEGRATION
+# -----------------------------------------------------------
 def add_central_auth(app: FastAPI):
 
-    AUTH_INTROSPECT_URL = os.getenv("AUTH_INTROSPECT_URL")
     AUTH_LOGIN_URL = os.getenv("AUTH_LOGIN_URL")
 
     SERVICE_NAME = os.getenv("SERVICE_NAME")
@@ -44,20 +103,22 @@ def add_central_auth(app: FastAPI):
     AUTH_REGISTER_URL = os.getenv("AUTH_REGISTER_URL")
     AUTH_ROUTE_SYNC_URL = os.getenv("AUTH_ROUTE_SYNC_URL")
 
-    # -----------------------------------------------------------
-    # INTERNAL VERGE ROUTES
-    # -----------------------------------------------------------
+    # -------------------------------------------------------
+    # INTERNAL VERGE ROUTES (UNCHANGED)
+    # -------------------------------------------------------
     app.include_router(verge_routes_router)
 
-    # -----------------------------------------------------------
+    # -------------------------------------------------------
     # MICROSERVICE BOOTSTRAP ON STARTUP
-    # -----------------------------------------------------------
+    # -------------------------------------------------------
     @app.on_event("startup")
     async def verge_bootstrap():
         print("🔥 Verge bootstrap started")
 
-        await asyncio.sleep(2)
+        # 🔐 Load JWT public key FIRST (retry-safe)
+        await load_public_key(force=True)
 
+        await asyncio.sleep(2)
         REGISTERED_ROUTES.clear()
 
         print("📌 Collecting routes...")
@@ -75,23 +136,15 @@ def add_central_auth(app: FastAPI):
 
                 for m in methods:
                     if m in ("GET", "POST", "PUT", "PATCH", "DELETE"):
-                        REGISTERED_ROUTES.append({"path": path, "method": m})
+                        REGISTERED_ROUTES.append(
+                            {"path": path, "method": m}
+                        )
 
             except Exception as e:
                 print("❌ Error collecting route:", e)
 
         print("✅ Collected routes:", REGISTERED_ROUTES)
-
         print("\n📡 Registering service with Auth Service...")
-        # print("SERVICE_NAME =", SERVICE_NAME)
-        # print("SERVICE_BASE_URL =", SERVICE_BASE_URL)
-        # print("AUTH_REGISTER_URL =", AUTH_REGISTER_URL)
-        # print("AUTH_ROUTE_SYNC_URL =", AUTH_ROUTE_SYNC_URL)
-        # print("VERGE_SERVICE_SECRET =",
-        #       VERGE_SERVICE_SECRET if VERGE_SERVICE_SECRET else "MISSING")
-        # print("CLIENT_ID =", CLIENT_ID if CLIENT_ID else "MISSING")
-        # print("CLIENT_SECRET =",
-        #       CLIENT_SECRET if CLIENT_SECRET else "MISSING")
 
         async with httpx.AsyncClient() as client:
             if AUTH_REGISTER_URL:
@@ -99,26 +152,23 @@ def add_central_auth(app: FastAPI):
                     resp = await _post_with_retries(
                         client,
                         AUTH_REGISTER_URL,
-                        json={"service_name": SERVICE_NAME,
-                              "base_url": SERVICE_BASE_URL},
+                        json={
+                            "service_name": SERVICE_NAME,
+                            "base_url": SERVICE_BASE_URL,
+                        },
                         headers={
                             "X-Client-Id": CLIENT_ID or "",
                             "X-Client-Secret": CLIENT_SECRET or "",
                             "X-Verge-Service-Secret": VERGE_SERVICE_SECRET or "",
                         },
-                        timeout=10,
-                        retries=8,
-                        backoff=1
                     )
-                    text = resp.text if hasattr(resp, "text") else await resp.text()
-                    print("📡 Registration response:", resp.status_code, text)
-
+                    print(
+                        "📡 Registration response:",
+                        resp.status_code,
+                        resp.text,
+                    )
                 except Exception as e:
-                    print("❌ Registration ultimately failed:",
-                          type(e).__name__, str(e))
-
-            else:
-                print("⚠️ AUTH_REGISTER_URL missing")
+                    print("❌ Registration failed:", e)
 
             if AUTH_ROUTE_SYNC_URL:
                 try:
@@ -136,22 +186,18 @@ def add_central_auth(app: FastAPI):
                             "X-Verge-Service-Secret": VERGE_SERVICE_SECRET or "",
                         },
                         timeout=20,
-                        retries=8,
-                        backoff=1
                     )
-                    text = resp.text if hasattr(resp, "text") else await resp.text()
-                    print("📡 Route sync response:", resp.status_code, text)
-
+                    print(
+                        "📡 Route sync response:",
+                        resp.status_code,
+                        resp.text,
+                    )
                 except Exception as e:
-                    print("❌ Route sync ultimately failed:",
-                          type(e).__name__, str(e))
+                    print("❌ Route sync failed:", e)
 
-            else:
-                print("⚠️ AUTH_ROUTE_SYNC_URL missing")
-
-    # -----------------------------------------------------------
-    # CENTRAL AUTHZ MIDDLEWARE (unchanged)
-    # -----------------------------------------------------------
+    # -------------------------------------------------------
+    # CENTRAL AUTHZ MIDDLEWARE (PRODUCTION SAFE)
+    # -------------------------------------------------------
     @app.middleware("http")
     async def central_auth(request: Request, call_next):
         path = request.url.path
@@ -180,37 +226,58 @@ def add_central_auth(app: FastAPI):
 
         if not token:
             if "text/html" in request.headers.get("accept", ""):
-                return RedirectResponse(f"{AUTH_LOGIN_URL}?redirect_url={request.url}")
+                return RedirectResponse(
+                    f"{AUTH_LOGIN_URL}?redirect_url={request.url}"
+                )
             return JSONResponse({"detail": "Unauthorized"}, status_code=401)
 
+        # ---------------------------------------------------
+        # LOCAL JWT VERIFICATION (NO PER-REQUEST NETWORK)
+        # ---------------------------------------------------
         try:
-            async with httpx.AsyncClient(timeout=5) as client:
-                res = await client.post(
-                    AUTH_INTROSPECT_URL,
-                    headers={
-                        "Authorization": f"Bearer {token}",
-                        "X-Client-Id": CLIENT_ID or "",
-                        "X-Client-Secret": CLIENT_SECRET or "",
-                    },
+            if not JWT_PUBLIC_KEY:
+                await load_public_key(force=True)
+
+            if not JWT_PUBLIC_KEY:
+                return JSONResponse(
+                    {"detail": "Auth key not ready"},
+                    status_code=503,
                 )
-                data = res.json()
+
+            payload = jwt.decode(
+                token,
+                JWT_PUBLIC_KEY,
+                algorithms=JWT_ALGORITHMS,
+                options={"require": ["exp", "iat"]},
+            )
+
+        except jwt.ExpiredSignatureError:
+            return JSONResponse({"detail": "Token expired"}, status_code=401)
+        except jwt.InvalidTokenError:
+            return JSONResponse({"detail": "Invalid token"}, status_code=401)
         except Exception as e:
-            return JSONResponse({"detail": "Auth service unreachable", "error": str(e)}, status_code=503)
+            return JSONResponse(
+                {"detail": "Auth verification failed", "error": str(e)},
+                status_code=401,
+            )
 
-        if not data.get("active"):
-            return JSONResponse({"detail": "Session expired"}, status_code=401)
-
-        request.state.user = data.get("user")
-        permissions = (data.get("roles") or [])
+        # ---------------------------------------------------
+        # PERMISSION CHECK (UNCHANGED)
+        # ---------------------------------------------------
+        request.state.user = payload
+        permissions = payload.get("roles") or []
 
         route_obj = request.scope.get("route")
-        route_path = route_obj.path if route_obj is not None else path
+        route_path = route_obj.path if route_obj else path
         method = request.method
 
         required_key = f"{SERVICE_NAME}:{route_path}:{method}".lower()
         normalized_permissions = [p.lower() for p in permissions]
 
         if required_key not in normalized_permissions:
-            return JSONResponse({"detail": "Contact admin for access"}, status_code=403)
+            return JSONResponse(
+                {"detail": "Contact admin for access"},
+                status_code=403,
+            )
 
         return await call_next(request)
