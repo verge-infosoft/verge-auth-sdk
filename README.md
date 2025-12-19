@@ -1,5 +1,6 @@
 🔐 Verge Auth SDK
-Secure Identity & Access Management for FastAPI Microservices
+
+Secure Identity & Access Management for FastAPI Microservices and all Python-based frameworks Monolithic and Microservice Architectures
 
 Verge Auth SDK is a lightweight integration library that connects your FastAPI microservices to the Verge Auth Platform — a centralized identity, role management, and access-control system built for modern SaaS applications.
 
@@ -38,8 +39,8 @@ Users sign up with their organization details, company domain, and email.
 
 2. Email Verification
 
-A verification link is sent from no-reply@vergeinfosoft.com
-.
+A verification email is sent to the registered address.
+
 Once verified, the user is redirected to the Verge Auth platform.
 
 3. Login
@@ -140,6 +141,7 @@ Add users into the group
 This makes onboarding smoother and keeps role management scalable.
 
 🔌 Integrating the SDK Into a Microservice
+
 Install from PyPI
 pip install verge_auth_sdk
 
@@ -148,6 +150,8 @@ from fastapi import FastAPI
 from verge_auth_sdk import add_central_auth
 
 app = FastAPI()
+
+# call this at the last line of your apps main
 add_central_auth(app)
 
 That’s it.
@@ -156,27 +160,40 @@ The service will now:
 ✓ Authenticate incoming requests
 ✓ Communicate securely with Verge Auth
 ✓ Provide user identity + roles
-✓ Automatically register its routes for RBAC assignment
+✓ Secure synchronization of service access metadata for centralized permission governance.
 
 ⚙ Environment Configuration
 
 Each service requires a minimal set of environment variables:
+Exact endpoint configurations and integration details may vary by deployment and are abstracted by the SDK.
 
 ######################################################################
 
-AUTH_INTROSPECT_URL=<auth-server-introspection-endpoint>
-AUTH_LOGIN_URL=<auth-server-login-ui>
+AUTH_SESSION_URL=<AUTH_SESSION_URL>
+AUTH_INTROSPECT_URL=<AUTH_INTROSPECT_URL>
+AUTH_REGISTER_URL=<AUTH_REGISTER_URL>
+AUTH_ROUTE_SYNC_URL=<AUTH_ROUTE_SYNC_URL>
+AUTH_PUBLIC_KEY_URL=<AUTH_PUBLIC_KEY_URL>
+AUTH_LOGIN_URL=<AUTH_LOGIN_URL>
+
+SERVICE_NAME=<SERVICE_NAME>
+SERVICE_BASE_URL=<SERVICE_BASE_URL>  example https://hr.yourdomain.com
 
 VERGE_CLIENT_ID=<client-id>
 VERGE_CLIENT_SECRET=<client-secret>
-
 VERGE_SERVICE_SECRET=<service-integration-secret>
 
 # These are provided by Verge Infosoft during onboarding.
 
 # Optional secret provider:
 
-SECRETS_PROVIDER=env # azure | aws
+SECRETS_PROVIDER=env | AZURE | AWS | GCP | ORACLE # Supported cloud providers for secret management
+
+env=env # YOUR LOCAL ENV
+azure=<AZURE_URL>
+aws=<AWS_URL>
+gcp=<GCP_URL>
+oracle=<ORACLE_URL>
 
 ########################################################################
 
@@ -200,7 +217,7 @@ You do not need to implement any auth or RBAC logic manually.
 
 🔐 Security Highlights
 
-RSA-based JWT verification
+Industry-standard asymmetric token verification with key rotation support
 
 Centralized session & token lifecycle management
 
@@ -212,7 +229,7 @@ HTTPS-only communication
 
 Support for cloud key vaults
 
-💼 Ideal For
+💼 Ideal For (including but not limited to):
 
 HRMS, ERP, CRM, Billing platforms
 

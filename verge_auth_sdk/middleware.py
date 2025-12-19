@@ -10,7 +10,7 @@ import jwt
 REGISTERED_ROUTES = []
 
 # ============================================================
-# GLOBAL JWT CACHE (PROCESS SAFE)
+# GLOBAL JWT CACHE
 # ============================================================
 JWT_PUBLIC_KEY: str | None = None
 JWT_KEY_ID: str | None = None
@@ -18,7 +18,7 @@ JWT_ALGORITHMS = ["RS256"]
 
 
 # -----------------------------------------------------------
-# HTTP helper with retries (UNCHANGED)
+# HTTP helper with retries
 # -----------------------------------------------------------
 async def _post_with_retries(
     client,
@@ -50,7 +50,7 @@ async def _post_with_retries(
 
 
 # -----------------------------------------------------------
-# PUBLIC KEY DISCOVERY (AUTH SERVICE = SOURCE OF TRUTH)
+# PUBLIC KEY DISCOVERY
 # -----------------------------------------------------------
 async def load_public_key(force: bool = False):
     """
@@ -104,7 +104,7 @@ def add_central_auth(app: FastAPI):
     AUTH_ROUTE_SYNC_URL = os.getenv("AUTH_ROUTE_SYNC_URL")
 
     # -------------------------------------------------------
-    # INTERNAL VERGE ROUTES (UNCHANGED)
+    # INTERNAL VERGE ROUTES
     # -------------------------------------------------------
     app.include_router(verge_routes_router)
 
@@ -143,7 +143,6 @@ def add_central_auth(app: FastAPI):
             except Exception as e:
                 print("❌ Error collecting route:", e)
 
-        print("✅ Collected routes:", REGISTERED_ROUTES)
         print("\n📡 Registering service with Auth Service...")
 
         async with httpx.AsyncClient() as client:
@@ -196,7 +195,7 @@ def add_central_auth(app: FastAPI):
                     print("❌ Route sync failed:", e)
 
     # -------------------------------------------------------
-    # CENTRAL AUTHZ MIDDLEWARE (PRODUCTION SAFE)
+    # CENTRAL AUTHZ MIDDLEWARE
     # -------------------------------------------------------
     @app.middleware("http")
     async def central_auth(request: Request, call_next):
@@ -232,7 +231,7 @@ def add_central_auth(app: FastAPI):
             return JSONResponse({"detail": "Unauthorized"}, status_code=401)
 
         # ---------------------------------------------------
-        # LOCAL JWT VERIFICATION (NO PER-REQUEST NETWORK)
+        # LOCAL JWT VERIFICATION
         # ---------------------------------------------------
         try:
             if not JWT_PUBLIC_KEY:
@@ -262,7 +261,7 @@ def add_central_auth(app: FastAPI):
             )
 
         # ---------------------------------------------------
-        # PERMISSION CHECK (UNCHANGED)
+        # PERMISSION CHECK
         # ---------------------------------------------------
         request.state.user = payload
         permissions = payload.get("roles") or []
