@@ -1,13 +1,15 @@
 from fastapi import FastAPI, Request
 from fastapi.responses import RedirectResponse, JSONResponse
-from .secret_provider import get_secret
-from .verge_routes import router as verge_routes_router
 import httpx
 import os
 import asyncio
 import jwt
+from typing import List
+from urllib.parse import quote
+from .secret_provider import get_secret
+from .verge_routes import router as verge_routes_router
 
-REGISTERED_ROUTES = []
+REGISTERED_ROUTES: List = []
 
 # ============================================================
 # GLOBAL JWT CACHE
@@ -64,7 +66,7 @@ async def load_public_key(force: bool = False):
 
     AUTH_PUBLIC_KEY_URL = os.getenv("AUTH_PUBLIC_KEY_URL")
     if not AUTH_PUBLIC_KEY_URL:
-        print("❌ AUTH_PUBLIC_KEY_URL not set")
+        print("❌ AUTH_PUBLIC_KEY_URL not set! Please Set it.")
         return
 
     try:
@@ -77,12 +79,12 @@ async def load_public_key(force: bool = False):
             JWT_KEY_ID = data.get("kid")
 
             if JWT_PUBLIC_KEY:
-                print("✅ JWT public key loaded from auth service")
+                print("✅ Security Key Loaded Successfully")
             else:
-                print("❌ JWT public key missing in response")
+                print("❌ Security Key Loading Failed")
 
     except Exception as e:
-        print("❌ Failed to load JWT public key:", str(e))
+        print("❌ Failed to load Security Key:", str(e))
 
 
 # -----------------------------------------------------------
@@ -102,6 +104,8 @@ def add_central_auth(app: FastAPI):
 
     AUTH_REGISTER_URL = os.getenv("AUTH_REGISTER_URL")
     AUTH_ROUTE_SYNC_URL = os.getenv("AUTH_ROUTE_SYNC_URL")
+    INTROSPECT_URL = os.getenv("AUTH_INTROSPECT_URL")
+    AUTH_BASE_URL = os.getenv("AUTH_BASE_URL")
 
     # -------------------------------------------------------
     # INTERNAL VERGE ROUTES
@@ -113,7 +117,7 @@ def add_central_auth(app: FastAPI):
     # -------------------------------------------------------
     @app.on_event("startup")
     async def verge_bootstrap():
-        print("🔥 Verge bootstrap started")
+        print("🔥 Verge Auth started")
 
         # 🔐 Load JWT public key FIRST (retry-safe)
         await load_public_key(force=True)
@@ -143,7 +147,7 @@ def add_central_auth(app: FastAPI):
             except Exception as e:
                 print("❌ Error collecting route:", e)
 
-        print("\n📡 Registering service with Auth Service...")
+        print("\n📡 Registering service with Verge Auth...")
 
         async with httpx.AsyncClient() as client:
             if AUTH_REGISTER_URL:
@@ -204,6 +208,7 @@ def add_central_auth(app: FastAPI):
         SKIP_PATHS = {
             "/health",
             "/docs",
+            "/redoc",
             "/openapi.json",
             "/favicon.ico",
             "/service-registry/register",
@@ -215,18 +220,49 @@ def add_central_auth(app: FastAPI):
             return await call_next(request)
 
         token = None
-        auth_header = request.headers.get("authorization")
 
+        auth_header = request.headers.get("authorization")
         if auth_header and auth_header.lower().startswith("bearer "):
             token = auth_header.split(" ", 1)[1].strip()
 
-        if not token:
-            token = request.cookies.get("access_token")
+        if not token and "session" in request.scope:
+            token = request.scope["session"].get("access_token")
+
+        # ---------------------------------------------------
+        # AUTH CODE EXCHANGE
+        # ---------------------------------------------------
+        if not token and "code" in request.query_params:
+            code = request.query_params.get("code")
+
+            try:
+                async with httpx.AsyncClient(timeout=5) as client:
+                    resp = await client.post(
+                        f"{AUTH_BASE_URL}/auth/exchange",
+                        json={"code": code},
+                        headers={
+                            "X-Client-Id": os.getenv("VERGE_CLIENT_ID") or "",
+                            "X-Client-Secret": os.getenv("VERGE_CLIENT_SECRET") or "",
+                        },
+                    )
+                    resp.raise_for_status()
+                    token = resp.json().get("access_token")
+
+                    if not token:
+                        return JSONResponse(
+                            {"detail": "Authorization failed: no token returned"},
+                            status_code=401,
+                        )
+
+            except Exception as e:
+                return JSONResponse(
+                    {"detail": "Authorization failed", "error": str(e)},
+                    status_code=401,
+                )
 
         if not token:
             if "text/html" in request.headers.get("accept", ""):
                 return RedirectResponse(
-                    f"{AUTH_LOGIN_URL}?redirect_url={request.url}"
+                    f"{AUTH_LOGIN_URL}?redirect_url={quote(str(request.url))}"
                 )
             return JSONResponse({"detail": "Unauthorized"}, status_code=401)
 
@@ -257,6 +293,36 @@ def add_central_auth(app: FastAPI):
         except Exception as e:
             return JSONResponse(
                 {"detail": "Auth verification failed", "error": str(e)},
+                status_code=401,
+            )
+
+        # ---------------------------------------------------
+        # CENTRAL INTROSPECTION CHECK (session + revocation)
+        # ---------------------------------------------------
+        try:
+            async with httpx.AsyncClient(timeout=5) as client:
+                resp = await client.post(INTROSPECT_URL,
+                                         headers={
+                                             "Authorization": f"Bearer {token}",
+                                             "X-Client-Id": os.getenv("VERGE_CLIENT_ID") or "",
+                                             "X-Client-Secret": os.getenv("VERGE_CLIENT_SECRET") or "",
+                                         },
+                                         )
+
+                data = resp.json()
+                if not data.get("active"):
+                    return JSONResponse(
+                        {"detail": "Session inactive",
+                            "reason": data.get("reason")},
+                        status_code=401,
+                    )
+
+                # optionally enrich request with user info
+                request.state.introspect = data
+
+        except Exception as e:
+            return JSONResponse(
+                {"detail": "Auth introspection failed", "error": str(e)},
                 status_code=401,
             )
 

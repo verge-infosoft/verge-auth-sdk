@@ -9,13 +9,10 @@ async def verge_internal_routes(request: Request):
 
     expected_secret = get_secret("VERGE_SERVICE_SECRET")
     received_secret = request.headers.get("X-Verge-Service-Secret")
-    
+
     if not expected_secret or expected_secret != received_secret:
 
-    # Enforce exact secret match
-    # for debugging stopping secret check 
-    # if not expected_secret or expected_secret != received_secret:
-    #     raise HTTPException(status_code=403, detail="Forbidden")
+        raise HTTPException(status_code=403, detail="Forbidden")
 
     collected = []
 

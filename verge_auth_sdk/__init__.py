@@ -2,7 +2,7 @@
 """
 verge_auth_sdk package public API.
 Exports:
- - add_central_auth(app)  -> middleware to attach to FastAPI app
+ - add_central_auth(app)  -> middleware to attach to Python app
  - get_secret(name)       -> secret retrieval helper
 """
 from .middleware import add_central_auth

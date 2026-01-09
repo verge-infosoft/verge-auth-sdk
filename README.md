@@ -167,35 +167,47 @@ The service will now:
 Each service requires a minimal set of environment variables:
 Exact endpoint configurations and integration details may vary by deployment and are abstracted by the SDK.
 
-######################################################################
+############## DO NOT CHANGE THESE VALUES #################################
 
-AUTH_SESSION_URL=<AUTH_SESSION_URL>
-AUTH_INTROSPECT_URL=<AUTH_INTROSPECT_URL>
-AUTH_REGISTER_URL=<AUTH_REGISTER_URL>
-AUTH_ROUTE_SYNC_URL=<AUTH_ROUTE_SYNC_URL>
-AUTH_PUBLIC_KEY_URL=<AUTH_PUBLIC_KEY_URL>
-AUTH_LOGIN_URL=<AUTH_LOGIN_URL>
+AUTH_BASE_URL=https://auth.vergeinfosoft.com
+AUTH_SESSION_URL=https://auth.vergeinfosoft.com/session
+AUTH_INTROSPECT_URL=https://auth.vergeinfosoft.com/introspect
+AUTH_REGISTER_URL=https://auth.vergeinfosoft.com/service-registry/register
+AUTH_ROUTE_SYNC_URL=https://auth.vergeinfosoft.com/route-sync
+AUTH_PUBLIC_KEY_URL=https://auth.vergeinfosoft.com/auth/keys/public 
+AUTH_LOGIN_URL=https://auth-ui.vergeinfosoft.com/login/
 
-SERVICE_NAME=<SERVICE_NAME>
-SERVICE_BASE_URL=<SERVICE_BASE_URL>  example https://hr.yourdomain.com
+############## DO NOT CHANGE THESE VALUES #################################
+
+
+################# CHANGE THESE AS PER DETAILS PROVIDED #############################################
 
 VERGE_CLIENT_ID=<client-id>
 VERGE_CLIENT_SECRET=<client-secret>
 VERGE_SERVICE_SECRET=<service-integration-secret>
-
 # These are provided by Verge Infosoft during onboarding.
 
-# Optional secret provider:
+####################################################################################################
+
+
+# Select Optional secret provider:
 
 SECRETS_PROVIDER=env | AZURE | AWS | GCP | ORACLE # Supported cloud providers for secret management
 
-env=env # YOUR LOCAL ENV
+env=env # if you want to load from your local ENV 
 azure=<AZURE_URL>
 aws=<AWS_URL>
 gcp=<GCP_URL>
 oracle=<ORACLE_URL>
 
 ########################################################################
+
+SERVICE_NAME=<SERVICE_NAME>  # example billing service or hr service
+SERVICE_BASE_URL=<SERVICE_BASE_URL>  example https://hr.yourdomain.com
+
+########################################################################
+
+
 
 🛡 Middleware Responsibilities
 
