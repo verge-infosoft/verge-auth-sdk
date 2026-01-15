@@ -167,7 +167,7 @@ The service will now:
 Each service requires a minimal set of environment variables:
 Exact endpoint configurations and integration details may vary by deployment and are abstracted by the SDK.
 
-############## DO NOT CHANGE THESE VALUES #################################
+############## DO NOT CHANGE THIS #################################
 
 AUTH_BASE_URL=https://auth.vergeinfosoft.com
 AUTH_SESSION_URL=https://auth.vergeinfosoft.com/session
@@ -175,9 +175,9 @@ AUTH_INTROSPECT_URL=https://auth.vergeinfosoft.com/introspect
 AUTH_REGISTER_URL=https://auth.vergeinfosoft.com/service-registry/register
 AUTH_ROUTE_SYNC_URL=https://auth.vergeinfosoft.com/route-sync
 AUTH_PUBLIC_KEY_URL=https://auth.vergeinfosoft.com/auth/keys/public 
-AUTH_LOGIN_URL=https://auth-ui.vergeinfosoft.com/login/
+AUTH_LOGIN_URL=https://auth.vergeinfosoft.com/login
 
-############## DO NOT CHANGE THESE VALUES #################################
+############## DO NOT CHANGE THIS #################################
 
 
 ################# CHANGE THESE AS PER DETAILS PROVIDED #############################################

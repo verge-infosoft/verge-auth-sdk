@@ -91,25 +91,21 @@ async def load_public_key(force: bool = False):
 # MAIN INTEGRATION
 # -----------------------------------------------------------
 def add_central_auth(app: FastAPI):
-
+    AUTH_BASE_URL = os.getenv("AUTH_BASE_URL")
     AUTH_LOGIN_URL = os.getenv("AUTH_LOGIN_URL")
-
     SERVICE_NAME = os.getenv("SERVICE_NAME")
     SERVICE_BASE_URL = os.getenv("SERVICE_BASE_URL")
-
     CLIENT_ID = os.getenv("VERGE_CLIENT_ID")
     CLIENT_SECRET = os.getenv("VERGE_CLIENT_SECRET")
-
     VERGE_SERVICE_SECRET = get_secret("VERGE_SERVICE_SECRET")
-
     AUTH_REGISTER_URL = os.getenv("AUTH_REGISTER_URL")
     AUTH_ROUTE_SYNC_URL = os.getenv("AUTH_ROUTE_SYNC_URL")
     INTROSPECT_URL = os.getenv("AUTH_INTROSPECT_URL")
-    AUTH_BASE_URL = os.getenv("AUTH_BASE_URL")
 
     # -------------------------------------------------------
     # INTERNAL VERGE ROUTES
     # -------------------------------------------------------
+
     app.include_router(verge_routes_router)
 
     # -------------------------------------------------------
@@ -207,8 +203,8 @@ def add_central_auth(app: FastAPI):
 
         SKIP_PATHS = {
             "/health",
-            "/docs",
-            "/redoc",
+            # "/docs",
+            # "/redoc",
             "/openapi.json",
             "/favicon.ico",
             "/service-registry/register",
@@ -219,12 +215,15 @@ def add_central_auth(app: FastAPI):
         if path in SKIP_PATHS or path.startswith("/__verge__"):
             return await call_next(request)
 
-        token = None
+        token = request.cookies.get("verge_access")
 
-        auth_header = request.headers.get("authorization")
-        if auth_header and auth_header.lower().startswith("bearer "):
-            token = auth_header.split(" ", 1)[1].strip()
+        # Then Authorization header
+        if not token:
+            auth_header = request.headers.get("authorization")
+            if auth_header and auth_header.lower().startswith("bearer "):
+                token = auth_header.split(" ", 1)[1].strip()
 
+        # Then session (optional fallback)
         if not token and "session" in request.scope:
             token = request.scope["session"].get("access_token")
 
@@ -253,18 +252,24 @@ def add_central_auth(app: FastAPI):
                             status_code=401,
                         )
 
+                    # Persist token + clean URL
+                    clean_url = str(request.url.remove_query_params("code"))
+                    response = RedirectResponse(clean_url)
+                    response.set_cookie(
+                        "verge_access",
+                        token,
+                        httponly=True,
+                        secure=True,
+                        samesite="lax",
+                        path="/",
+                    )
+                    return response
+
             except Exception as e:
                 return JSONResponse(
                     {"detail": "Authorization failed", "error": str(e)},
                     status_code=401,
                 )
-
-        if not token:
-            if "text/html" in request.headers.get("accept", ""):
-                return RedirectResponse(
-                    f"{AUTH_LOGIN_URL}?redirect_url={quote(str(request.url))}"
-                )
-            return JSONResponse({"detail": "Unauthorized"}, status_code=401)
 
         # ---------------------------------------------------
         # LOCAL JWT VERIFICATION
