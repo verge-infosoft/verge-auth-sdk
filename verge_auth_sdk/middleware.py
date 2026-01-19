@@ -5,9 +5,29 @@ import os
 import asyncio
 import jwt
 from typing import List
-from urllib.parse import quote
 from .secret_provider import get_secret
 from .verge_routes import router as verge_routes_router
+
+
+def is_request_secure(request: Request) -> bool:
+    """
+    Returns True when the browser-facing connection is HTTPS.
+    Works for:
+    - Real production HTTPS
+    - Ngrok (HTTPS → HTTP backend)
+    - Cloud LB / Nginx / ALB setups
+    """
+    # Case 1: Native HTTPS
+    if request.url.scheme == "https":
+        return True
+
+    # Case 2: Behind proxy / ngrok
+    forwarded_proto = request.headers.get("x-forwarded-proto")
+    if forwarded_proto and forwarded_proto.lower() == "https":
+        return True
+
+    return False
+
 
 REGISTERED_ROUTES: List = []
 
@@ -55,10 +75,6 @@ async def _post_with_retries(
 # PUBLIC KEY DISCOVERY
 # -----------------------------------------------------------
 async def load_public_key(force: bool = False):
-    """
-    Loads and caches the JWT public key from auth-service.
-    Safe to call multiple times.
-    """
     global JWT_PUBLIC_KEY, JWT_KEY_ID
 
     if JWT_PUBLIC_KEY and not force:
@@ -92,7 +108,6 @@ async def load_public_key(force: bool = False):
 # -----------------------------------------------------------
 def add_central_auth(app: FastAPI):
     AUTH_BASE_URL = os.getenv("AUTH_BASE_URL")
-    AUTH_LOGIN_URL = os.getenv("AUTH_LOGIN_URL")
     SERVICE_NAME = os.getenv("SERVICE_NAME")
     SERVICE_BASE_URL = os.getenv("SERVICE_BASE_URL")
     CLIENT_ID = os.getenv("VERGE_CLIENT_ID")
@@ -102,10 +117,7 @@ def add_central_auth(app: FastAPI):
     AUTH_ROUTE_SYNC_URL = os.getenv("AUTH_ROUTE_SYNC_URL")
     INTROSPECT_URL = os.getenv("AUTH_INTROSPECT_URL")
 
-    # -------------------------------------------------------
-    # INTERNAL VERGE ROUTES
-    # -------------------------------------------------------
-
+    # Include internal verge routes
     app.include_router(verge_routes_router)
 
     # -------------------------------------------------------
@@ -115,12 +127,11 @@ def add_central_auth(app: FastAPI):
     async def verge_bootstrap():
         print("🔥 Verge Auth started")
 
-        # 🔐 Load JWT public key FIRST (retry-safe)
+        # Load JWT public key
         await load_public_key(force=True)
-
         await asyncio.sleep(2)
-        REGISTERED_ROUTES.clear()
 
+        REGISTERED_ROUTES.clear()
         print("📌 Collecting routes...")
 
         for route in app.routes:
@@ -136,9 +147,7 @@ def add_central_auth(app: FastAPI):
 
                 for m in methods:
                     if m in ("GET", "POST", "PUT", "PATCH", "DELETE"):
-                        REGISTERED_ROUTES.append(
-                            {"path": path, "method": m}
-                        )
+                        REGISTERED_ROUTES.append({"path": path, "method": m})
 
             except Exception as e:
                 print("❌ Error collecting route:", e)
@@ -195,7 +204,7 @@ def add_central_auth(app: FastAPI):
                     print("❌ Route sync failed:", e)
 
     # -------------------------------------------------------
-    # CENTRAL AUTHZ MIDDLEWARE
+    # CENTRAL AUTHZ MIDDLEWARE (CORRECTED FLOW)
     # -------------------------------------------------------
     @app.middleware("http")
     async def central_auth(request: Request, call_next):
@@ -203,8 +212,6 @@ def add_central_auth(app: FastAPI):
 
         SKIP_PATHS = {
             "/health",
-            # "/docs",
-            # "/redoc",
             "/openapi.json",
             "/favicon.ico",
             "/service-registry/register",
@@ -212,25 +219,14 @@ def add_central_auth(app: FastAPI):
             "/__verge__",
         }
 
-        if path in SKIP_PATHS or path.startswith("/__verge__"):
+        # safer matching (handles trailing slash)
+        if path.rstrip("/") in SKIP_PATHS or path.startswith("/__verge__"):
             return await call_next(request)
 
-        token = request.cookies.get("verge_access")
-
-        # Then Authorization header
-        if not token:
-            auth_header = request.headers.get("authorization")
-            if auth_header and auth_header.lower().startswith("bearer "):
-                token = auth_header.split(" ", 1)[1].strip()
-
-        # Then session (optional fallback)
-        if not token and "session" in request.scope:
-            token = request.scope["session"].get("access_token")
-
         # ---------------------------------------------------
-        # AUTH CODE EXCHANGE
+        # STEP 1 — HANDLE AUTH CODE FIRST
         # ---------------------------------------------------
-        if not token and "code" in request.query_params:
+        if "code" in request.query_params:
             code = request.query_params.get("code")
 
             try:
@@ -251,17 +247,25 @@ def add_central_auth(app: FastAPI):
                             {"detail": "Authorization failed: no token returned"},
                             status_code=401,
                         )
-
-                    # Persist token + clean URL
                     clean_url = str(request.url.remove_query_params("code"))
                     response = RedirectResponse(clean_url)
                     response.set_cookie(
                         "verge_access",
                         token,
                         httponly=True,
-                        secure=True,
+                        secure=is_request_secure(request),
                         samesite="lax",
                         path="/",
+                    )
+
+                    response.set_cookie(
+                        "verge_fresh_auth",
+                        "1",
+                        httponly=True,
+                        secure=is_request_secure(request),
+                        samesite="lax",
+                        path="/",
+                        max_age=5,   # only valid for 5 seconds
                     )
                     return response
 
@@ -272,7 +276,37 @@ def add_central_auth(app: FastAPI):
                 )
 
         # ---------------------------------------------------
-        # LOCAL JWT VERIFICATION
+        # STEP 2 — COLLECT TOKEN (cookie → header → session)
+        # ---------------------------------------------------
+        token = request.cookies.get("verge_access")
+
+        if not token:
+            auth_header = request.headers.get("authorization")
+            if auth_header and auth_header.lower().startswith("bearer "):
+                token = auth_header.split(" ", 1)[1].strip()
+
+        if not token and "session" in request.scope:
+            token = request.scope["session"].get("access_token")
+
+        # if getattr(request.state, "_just_authenticated", False):
+        #     return await call_next(request)
+
+        if request.cookies.get("verge_fresh_auth") == "1":
+            response = await call_next(request)
+
+            # clean up the flag so normal auth resumes next time
+            response.delete_cookie("verge_fresh_auth")
+            return response
+
+        # ---------------------------------------------------
+        # STEP 3 — FAIL CLEANLY IF STILL NO TOKEN
+        # ---------------------------------------------------
+        if not token:
+            login_url = f"{os.getenv('AUTH_LOGIN_URL')}?redirect={request.url}"
+            return RedirectResponse(login_url)
+
+        # ---------------------------------------------------
+        # STEP 4 — LOCAL JWT VERIFICATION
         # ---------------------------------------------------
         try:
             if not JWT_PUBLIC_KEY:
@@ -302,27 +336,29 @@ def add_central_auth(app: FastAPI):
             )
 
         # ---------------------------------------------------
-        # CENTRAL INTROSPECTION CHECK (session + revocation)
+        # STEP 5 — CENTRAL INTROSPECTION
         # ---------------------------------------------------
         try:
             async with httpx.AsyncClient(timeout=5) as client:
-                resp = await client.post(INTROSPECT_URL,
-                                         headers={
-                                             "Authorization": f"Bearer {token}",
-                                             "X-Client-Id": os.getenv("VERGE_CLIENT_ID") or "",
-                                             "X-Client-Secret": os.getenv("VERGE_CLIENT_SECRET") or "",
-                                         },
-                                         )
+                resp = await client.post(
+                    INTROSPECT_URL,
+                    headers={
+                        "Authorization": f"Bearer {token}",
+                        "X-Client-Id": os.getenv("VERGE_CLIENT_ID") or "",
+                        "X-Client-Secret": os.getenv("VERGE_CLIENT_SECRET") or "",
+                    },
+                )
 
                 data = resp.json()
                 if not data.get("active"):
                     return JSONResponse(
-                        {"detail": "Session inactive",
-                            "reason": data.get("reason")},
+                        {
+                            "detail": "Session inactive",
+                            "reason": data.get("reason"),
+                        },
                         status_code=401,
                     )
 
-                # optionally enrich request with user info
                 request.state.introspect = data
 
         except Exception as e:
@@ -332,7 +368,7 @@ def add_central_auth(app: FastAPI):
             )
 
         # ---------------------------------------------------
-        # PERMISSION CHECK
+        # STEP 6 — PERMISSION CHECK
         # ---------------------------------------------------
         request.state.user = payload
         permissions = payload.get("roles") or []
@@ -340,6 +376,10 @@ def add_central_auth(app: FastAPI):
         route_obj = request.scope.get("route")
         route_path = route_obj.path if route_obj else path
         method = request.method
+
+        # 🔹 SPECIAL CASE: allow redoc AFTER auth
+        if path.rstrip("/") in {"/redoc", "/docs"}:
+            return await call_next(request)
 
         required_key = f"{SERVICE_NAME}:{route_path}:{method}".lower()
         normalized_permissions = [p.lower() for p in permissions]
