@@ -102,24 +102,24 @@ def add_central_auth(app: FastAPI):
 
     app.include_router(verge_routes_router)
 
-    @app.post("/__verge__/set-cookie")
-    def verge_set_cookie(request: Request):
-        auth = request.headers.get("authorization")
-        if not auth:
-            return JSONResponse({"detail": "Missing Authorization header"}, status_code=401)
+    # @app.post("/__verge__/set-cookie")
+    # def verge_set_cookie(request: Request):
+    #     auth = request.headers.get("authorization")
+    #     if not auth:
+    #         return JSONResponse({"detail": "Missing Authorization header"}, status_code=401)
 
-        token = auth.split(" ")[1]
+    #     token = auth.split(" ")[1]
 
-        response = JSONResponse({"ok": True})
-        response.set_cookie(
-            "verge_access",
-            token,
-            httponly=True,
-            secure=is_request_secure(request),
-            samesite="None",
-            path="/",
-        )
-        return response
+    #     response = JSONResponse({"ok": True})
+    #     response.set_cookie(
+    #         "verge_access",
+    #         token,
+    #         httponly=True,
+    #         secure=is_request_secure(request),
+    #         samesite="None",
+    #         path="/",
+    #     )
+    #     return response
 
     @app.on_event("startup")
     async def verge_bootstrap():
@@ -211,86 +211,93 @@ def add_central_auth(app: FastAPI):
             "/__verge__",
         }
 
-        # Safer matching (handles trailing slash)
         normalized_path = path.rstrip("/")
         if normalized_path in SKIP_PATHS or path.startswith("/__verge__"):
             return await call_next(request)
 
-        # ---------------------------------------------------
-        # STEP 1 — HANDLE AUTH CODE EXCHANGE (SERVICE-SIDE ONLY)
-        # ---------------------------------------------------
-        # NOTE: The auth frontend already exchanges codes via /auth/exchange
-        # This middleware only needs to handle codes coming from /services/launch
-        # which generates codes for microservice access
+        code = request.query_params.get("code")
+        print("code in request param", code)
 
-        # code = request.query_params.get("code")
-        # print("code in request param", code)
+        if code:
+            existing_token = request.cookies.get("verge_access")
+            print("existing token ", existing_token)
+            if existing_token:
+                clean_url = str(request.url.remove_query_params("code"))
+                print("clean_url RedirectResponse", clean_url)
+                return RedirectResponse(clean_url, status_code=302)
 
-        # if code:
-        #     # Check if we already have a valid token cookie
-        #     existing_token = request.cookies.get("verge_access")
-        #     print("existing token ", existing_token)
-        #     if existing_token:
-        #         # Already authenticated - just clean URL and proceed
-        #         clean_url = str(request.url.remove_query_params("code"))
-        #         print("clean_url RedirectResponse", clean_url)
-        #         return RedirectResponse(clean_url, status_code=302)
+            try:
+                async with httpx.AsyncClient(timeout=30) as client:
+                    resp = await client.post(
+                        f"{AUTH_BASE_URL}/auth/exchange",
+                        json={"code": code},
+                        headers={
+                            "X-Client-Id": CLIENT_ID or "",
+                            "X-Client-Secret": CLIENT_SECRET or "",
+                        },
+                    )
+                    resp.raise_for_status()
+                    data = resp.json()
+                    token = data.get("access_token")
 
-        #     # Exchange code for token (from /services/launch flow)
-        #     try:
-        #         async with httpx.AsyncClient(timeout=30) as client:
-        #             resp = await client.post(
-        #                 f"{AUTH_BASE_URL}/auth/exchange",
-        #                 json={"code": code},
-        #                 headers={
-        #                     "X-Client-Id": CLIENT_ID or "",
-        #                     "X-Client-Secret": CLIENT_SECRET or "",
-        #                 },
-        #             )
-        #             resp.raise_for_status()
-        #             data = resp.json()
-        #             token = data.get("access_token")
+                    if not token:
+                        return JSONResponse(
+                            {"detail": "Authorization failed: no token returned"},
+                            status_code=401,
+                        )
 
-        #             if not token:
-        #                 return JSONResponse(
-        #                     {"detail": "Authorization failed: no token returned"},
-        #                     status_code=401,
-        #                 )
+                    def _get_cookie_settings():
+                        env = os.getenv("VERGE_ENV", "dev").lower()
 
-        #             # Set cookie with token and redirect to clean URL
-        #             clean_url = str(request.url.remove_query_params("code"))
-        #             response = RedirectResponse(clean_url, status_code=302)
-        #             print("clean url when no existinig toke ", clean_url)
-        #             response.set_cookie(
-        #                 key="verge_access",
-        #                 value=token,
-        #                 httponly=True,
-        #                 secure=is_request_secure(request),
-        #                 samesite="lax",
-        #                 path="/",
-        #                 max_age=28800,  # 8 hours to match session
-        #             )
+                        if env == "prod":
+                            return {
+                                "secure": True,
+                                "samesite": "none",
+                                # # optional but recommended
+                                # "domain": os.getenv("VERGE_COOKIE_DOMAIN"),
+                            }
 
-        #             return response
+                        # dev / default
+                        return {
+                            "secure": False,
+                            "samesite": "lax",
+                            # "domain": None,
+                        }
+                    cookie_cfg = _get_cookie_settings()
 
-        #     except httpx.HTTPStatusError as e:
-        #         error_detail = e.response.text if hasattr(
-        #             e.response, 'text') else str(e)
-        #         print(f"❌ Code exchange failed: {error_detail}")
-        #         return JSONResponse(
-        #             {
-        #                 "detail": "Authorization code exchange failed",
-        #                 "error": error_detail,
-        #                 "status_code": e.response.status_code if hasattr(e.response, 'status_code') else 500
-        #             },
-        #             status_code=401,
-        #         )
-        #     except Exception as e:
-        #         print(f"❌ Code exchange error: {str(e)}")
-        #         return JSONResponse(
-        #             {"detail": "Authorization failed", "error": str(e)},
-        #             status_code=401,
-        #         )
+                    clean_url = str(request.url.remove_query_params("code"))
+                    response = RedirectResponse(clean_url, status_code=302)
+                    response.set_cookie(
+                        key="verge_access",
+                        value=token,
+                        httponly=True,
+                        secure=cookie_cfg["secure"],
+                        samesite=cookie_cfg["samesite"],
+                        # domain=cookie_cfg["domain"],
+                        path="/",
+                        max_age=28800,
+                    )
+
+                    return response
+
+            except httpx.HTTPStatusError as e:
+                error_detail = e.response.text if hasattr(
+                    e.response, 'text') else str(e)
+                print(f"❌ Code exchange failed: {error_detail}")
+                return JSONResponse(
+                    {
+                        "detail": "Authorization code exchange failed",
+                        "error": error_detail,
+                        "status_code": e.response.status_code if hasattr(e.response, 'status_code') else 500
+                    },
+                    status_code=401,
+                )
+            except Exception as e:
+                print(f"❌ Code exchange error: {str(e)}")
+                return JSONResponse(
+                    {"detail": "Authorization failed", "error": str(e)},
+                    status_code=401,
+                )
 
         # ---------------------------------------------------
         # STEP 2 — COLLECT TOKEN (cookie → header → session)
