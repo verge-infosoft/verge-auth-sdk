@@ -16,7 +16,6 @@ async def verge_internal_routes(request: Request):
 
     collected = []
 
-    # FastAPI auto-generated system paths you DON'T want to sync
     INTERNAL_PREFIXES = (
         "/__verge__",
     )
@@ -28,11 +27,9 @@ async def verge_internal_routes(request: Request):
         if not path:
             continue
 
-        # Skip internal/system routes
         if path.startswith(INTERNAL_PREFIXES):
             continue
 
-        # Filter HTTP methods
         for method in methods:
             if method in ("GET", "POST", "PUT", "PATCH", "DELETE"):
                 collected.append({
@@ -40,7 +37,6 @@ async def verge_internal_routes(request: Request):
                     "method": method
                 })
 
-    # Sort for consistency (helps prevent duplicate entries in DB)
     collected.sort(key=lambda r: (r["path"], r["method"]))
 
     return collected
