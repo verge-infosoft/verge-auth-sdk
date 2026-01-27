@@ -5,6 +5,7 @@ import os
 import asyncio
 import jwt
 from typing import List
+from urllib.parse import urlparse
 from .secret_provider import get_secret
 from .verge_routes import router as verge_routes_router
 
@@ -19,6 +20,59 @@ def is_request_secure(request: Request) -> bool:
         return True
 
     return False
+
+
+def get_external_url(request: Request) -> str:
+    proto = request.headers.get("x-forwarded-proto", request.url.scheme)
+    host = request.headers.get("x-forwarded-host", request.headers.get("host"))
+    return f"{proto}://{host}{request.url.path}"
+
+
+# def _get_cookie_domain():
+#     base = os.getenv("SERVICE_BASE_URL")
+#     if not base:
+#         return None
+
+#     host = urlparse(base).hostname
+
+#     # host-only cookie (safe paths)
+#     if (
+#         not host
+#         or host in ("localhost", "127.0.0.1")
+#         or host.endswith(".ngrok-free.dev")
+#         or host.endswith(".ngrok.app")
+#     ):
+#         return None
+
+#     # real prod domains only
+#     parts = host.split(".")
+#     if len(parts) >= 2:
+#         return "." + ".".join(parts[-2:])
+
+#     return None
+
+def _get_cookie_domain():
+    base = os.getenv("SERVICE_BASE_URL")
+    if not base:
+        return None
+
+    host = urlparse(base).hostname
+    if not host:
+        return None
+
+    # 🔥 IP addresses must NEVER set domain
+    if host.replace(".", "").isdigit():
+        return None
+
+    if host in ("localhost", "127.0.0.1"):
+        return None
+
+    parts = host.split(".")
+    if len(parts) >= 2:
+        return "." + ".".join(parts[-2:])
+
+    return None
+
 
 
 REGISTERED_ROUTES: List = []
@@ -92,9 +146,12 @@ def add_central_auth(app: FastAPI):
     AUTH_BASE_URL = os.getenv("AUTH_BASE_URL", "").rstrip("/")
     SERVICE_NAME = os.getenv("SERVICE_NAME")
     SERVICE_BASE_URL = os.getenv("SERVICE_BASE_URL")
-    CLIENT_ID = os.getenv("VERGE_CLIENT_ID")
-    CLIENT_SECRET = os.getenv("VERGE_CLIENT_SECRET")
-    VERGE_SERVICE_SECRET = get_secret("VERGE_SERVICE_SECRET")
+    # CLIENT_ID = os.getenv("VERGE_CLIENT_ID")
+    # CLIENT_SECRET = os.getenv("VERGE_CLIENT_SECRET")
+    # VERGE_SERVICE_SECRET = get_secret("VERGE_SERVICE_SECRET")
+    CLIENT_ID = get_secret("VERGE_CLIENT_ID", required=True)
+    CLIENT_SECRET = get_secret("VERGE_CLIENT_SECRET", required=True)
+    VERGE_SERVICE_SECRET = get_secret("VERGE_SERVICE_SECRET", required=True)
 
     AUTH_REGISTER_URL = f"{AUTH_BASE_URL}/service-registry/register"
     AUTH_ROUTE_SYNC_URL = f"{AUTH_BASE_URL}/route-sync"
@@ -219,6 +276,7 @@ def add_central_auth(app: FastAPI):
         print("code in request param", code)
 
         if code:
+            print("if code block entered ", code)
             existing_token = request.cookies.get("verge_access")
             print("existing token ", existing_token)
             if existing_token:
@@ -227,7 +285,9 @@ def add_central_auth(app: FastAPI):
                 return RedirectResponse(clean_url, status_code=302)
 
             try:
-                async with httpx.AsyncClient(timeout=30) as client:
+                async with httpx.AsyncClient(timeout=60) as client:
+                    print(
+                        "code creation block entered still existing token ", existing_token)
                     resp = await client.post(
                         f"{AUTH_BASE_URL}/auth/exchange",
                         json={"code": code},
@@ -248,36 +308,38 @@ def add_central_auth(app: FastAPI):
 
                     def _get_cookie_settings():
                         env = os.getenv("VERGE_ENV", "dev").lower()
+                        print("reached _get_cookie_settings ")
+                        print("code in request param*************", code)
+                        print("existing token************** ", existing_token)
 
                         if env == "prod":
+                            print("checked for env******prod or dev")
                             return {
                                 "secure": True,
                                 "samesite": "none",
-                                # # optional but recommended
-                                # "domain": os.getenv("VERGE_COOKIE_DOMAIN"),
                             }
 
                         # dev / default
                         return {
                             "secure": False,
                             "samesite": "lax",
-                            # "domain": None,
                         }
                     cookie_cfg = _get_cookie_settings()
-
+                    cookie_domain = _get_cookie_domain()
                     clean_url = str(request.url.remove_query_params("code"))
                     response = RedirectResponse(clean_url, status_code=302)
+                    print("recached response state set cookie")
                     response.set_cookie(
                         key="verge_access",
                         value=token,
                         httponly=True,
                         secure=cookie_cfg["secure"],
                         samesite=cookie_cfg["samesite"],
-                        # domain=cookie_cfg["domain"],
+                        domain=cookie_domain,
                         path="/",
                         max_age=28800,
                     )
-
+                    print("response state set cookie", response)
                     return response
 
             except httpx.HTTPStatusError as e:
@@ -303,14 +365,18 @@ def add_central_auth(app: FastAPI):
         # STEP 2 — COLLECT TOKEN (cookie → header → session)
         # ---------------------------------------------------
         token = request.cookies.get("verge_access")
+        print("reached token checking ", token)
 
         if not token:
             auth_header = request.headers.get("authorization")
+            print("reached auth header", auth_header)
             if auth_header and auth_header.lower().startswith("bearer "):
                 token = auth_header.split(" ", 1)[1].strip()
+                print("reached below auth hedaer", token)
 
         if not token and "session" in request.scope:
             token = request.scope["session"].get("access_token")
+            print("reached request scope", token)
 
         _raw_public = os.getenv("PUBLIC_PATHS", "")
         PUBLIC_PATHS = {
@@ -318,14 +384,19 @@ def add_central_auth(app: FastAPI):
             for p in _raw_public.split(",")
             if p.strip()
         }
+        print("reached raw public path", PUBLIC_PATHS)
 
         if not token:
             if normalized_path in PUBLIC_PATHS:
+                print("reached normalized_path")
                 return await call_next(request)
 
-            login_url = f"{os.getenv('AUTH_LOGIN_URL')}?redirect_url={request.url}"
+            # redirect_target = str(request.url).replace("http://", "https://")
+            redirect_target = get_external_url(request)
+            print("reached redirect_target")
+            login_url = f"{os.getenv('AUTH_LOGIN_URL')}?redirect_url={redirect_target}"
 
-            print("Login_Url ***", login_url)
+            print("reached Login_Url ***", login_url)
 
             return RedirectResponse(login_url, status_code=302)
 
@@ -405,9 +476,11 @@ def add_central_auth(app: FastAPI):
         request.state.user = payload
         permissions = payload.get("roles") or []
 
-        route_obj = request.scope.get("route")
-        route_path = route_obj.path if route_obj else path
-        method = request.method
+        # route_obj = request.scope.get("route")
+        # route_path = route_obj.path if route_obj else path
+        # method = request.method
+        route_path = request.url.path.rstrip("/") or "/"
+        method = request.method.upper()
 
         if normalized_path in PUBLIC_PATHS:
             return await call_next(request)

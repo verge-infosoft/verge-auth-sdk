@@ -19,9 +19,6 @@ async def verge_internal_routes(request: Request):
     # FastAPI auto-generated system paths you DON'T want to sync
     INTERNAL_PREFIXES = (
         "/__verge__",
-        "/openapi",
-        "/docs",
-        "/redoc"
     )
 
     for route in request.app.routes:

@@ -2,64 +2,88 @@ import os
 from functools import lru_cache
 
 
+class SecretNotFoundError(Exception):
+    pass
+
+
 # ----- Internal provider functions -----
-def _from_env(name: str) -> str:
+def _from_env(name: str) -> str | None:
     return os.getenv(name)
 
 
 def _from_aws(name: str) -> str:
-    raise NotImplementedError("AWS secret provider not implemented yet")
+    raise NotImplementedError("AWS Secrets Manager provider not implemented")
 
 
 def _from_azure(name: str) -> str:
-    raise NotImplementedError("Azure secret provider not implemented yet")
+    raise NotImplementedError("Azure Key Vault provider not implemented")
 
 
 def _from_gcp(name: str) -> str:
-    raise NotImplementedError("GCP secret provider not implemented yet")
+    raise NotImplementedError("GCP Secret Manager provider not implemented")
 
 
 def _from_oracle(name: str) -> str:
-    raise NotImplementedError("Oracle secret provider not implemented yet")
+    raise NotImplementedError("Oracle Cloud Vault provider not implemented")
 
 
-# ----- Main entry point -----
+PROVIDER_LOADERS = {
+    "env": _from_env,
+    "aws": _from_aws,
+    "azure": _from_azure,
+    "gcp": _from_gcp,
+    "oracle": _from_oracle,
+}
+
+
 @lru_cache(maxsize=128)
-def get_secret(name: str) -> str:
+def get_secret(name: str, *, required: bool = False) -> str | None:
     """
-    Universal secret provider supporting:
-    - Local .env
-    - AWS Secrets Manager
-    - Azure Key Vault
-    - Google Cloud Secret Manager
-    - Oracle Cloud Vault
+    Universal secret provider (soft-fail by default).
+
+    If required=True → raises SecretNotFoundError
+    If required=False → returns None
     """
 
     provider = os.getenv("SECRETS_PROVIDER", "env").lower()
+    loader = PROVIDER_LOADERS.get(provider)
 
+    if not loader:
+        error = SecretNotFoundError(
+            f"Unsupported SECRETS_PROVIDER '{provider}'"
+        )
+        if required:
+            raise error
+        return None
+
+    # Try configured provider
     try:
-        if provider == "env":
-            return _from_env(name)
+        value = loader(name)
 
-        if provider == "aws":
-            return _from_aws(name)
+        if value is not None and value != "":
+            return value
 
-        if provider == "azure":
-            return _from_azure(name)
-
-        if provider == "gcp":
-            return _from_gcp(name)
-
-        if provider == "oracle":
-            return _from_oracle(name)
+    except NotImplementedError:
+        # Explicit signal → configuration error
+        raise
 
     except Exception as e:
-        # fallback to environment variables
-        value = os.getenv(name)
-        if value:
-            return value
-        raise Exception(
-            f"Secret '{name}' not found via provider '{provider}': {e}"
-        )
+        provider_error = e
+    else:
+        provider_error = None
 
-    raise Exception(f"Unknown SECRETS_PROVIDER '{provider}'")
+    # Fallback to env
+    fallback = os.getenv(name)
+    if fallback:
+        return fallback
+
+    # Soft fail or hard fail
+    error = SecretNotFoundError(
+        f"Secret '{name}' not found via provider '{provider}'"
+        + (f": {provider_error}" if provider_error else "")
+    )
+
+    if required:
+        raise error
+
+    return None
