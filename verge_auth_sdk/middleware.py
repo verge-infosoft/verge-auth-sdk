@@ -26,6 +26,12 @@ JWT_PUBLIC_KEY: str | None = None
 JWT_KEY_ID: str | None = None
 JWT_ALGORITHMS = ["RS256"]
 
+AUTH_BASE_URL = os.getenv("AUTH_BASE_URL", "").rstrip("/")
+
+
+def log(msg: str):
+    print(f"[CENTRAL_AUTH] {msg}", flush=True)
+
 
 # -------------------------------------------------------------------
 # Load JWT Public Key
@@ -37,7 +43,6 @@ async def load_public_key(force: bool = False):
     if JWT_PUBLIC_KEY and not force:
         return
 
-    AUTH_BASE_URL = os.getenv("AUTH_BASE_URL", "").rstrip("/")
     AUTH_PUBLIC_KEY_URL = f"{AUTH_BASE_URL}/auth/keys/public"
 
     if not AUTH_PUBLIC_KEY_URL:
@@ -70,7 +75,7 @@ def add_central_auth(app: FastAPI):
 
     AUTH_REGISTER_URL = f"{AUTH_BASE_URL}/service-registry/register"
     AUTH_ROUTE_SYNC_URL = f"{AUTH_BASE_URL}/route-sync"
-    INTROSPECT_URL = f"{AUTH_BASE_URL}/introspect"
+    SERVICE_FRONTEND_URL = os.getenv("SERVICE_FRONTEND_URL")
 
     app.include_router(verge_routes_router)
 
@@ -136,22 +141,34 @@ def add_central_auth(app: FastAPI):
         path = request.url.path
         normalized_path = path.rstrip("/")
 
+        log(f"Incoming request: {request.method} {request.url}")
+        log(f"Normalized path: {normalized_path}")
+
         # ------------------------------------------------------------
         # Skip internal paths
         # ------------------------------------------------------------
         if normalized_path.startswith("/__verge__"):
+            log("Skipping internal Verge path")
             return await call_next(request)
 
         # ------------------------------------------------------------
         # Step 1 — Handle auth code callback
         # ------------------------------------------------------------
         code = request.query_params.get("code")
+        log(f"Auth code detected: {code}")
         if code:
+            log("Auth code detected")
+
+            # If cookie already exists → just remove code and go to frontend
             if request.cookies.get("verge_access"):
+                log("Cookie exists, removing code and redirecting to frontend")
+
                 return RedirectResponse(
-                    str(request.url.remove_query_params("code")),
+                    f"{SERVICE_FRONTEND_URL}{request.url.path}",
                     status_code=302,
                 )
+
+            log("Exchanging auth code with Verge Auth")
 
             async with httpx.AsyncClient(timeout=60) as client:
                 resp = await client.post(
@@ -165,6 +182,7 @@ def add_central_auth(app: FastAPI):
                 resp.raise_for_status()
 
                 token = resp.json().get("access_token")
+
                 if not token:
                     return JSONResponse(
                         {"detail": "Authorization failed"},
@@ -172,40 +190,115 @@ def add_central_auth(app: FastAPI):
                     )
 
                 response = RedirectResponse(
-                    str(request.url.remove_query_params("code")),
+                    f"{SERVICE_FRONTEND_URL}{request.url.path}",
                     status_code=302,
                 )
+
                 response.set_cookie(
                     key="verge_access",
                     value=token,
                     **get_cookie_settings(request),
                 )
+
                 return response
+        # if code:
+        #     if request.cookies.get("verge_access"):
+        #         log("verge_access cookie already exists, stripping code and redirecting")
+
+        #         log("RedirectResponse initiated")
+        #         # return RedirectResponse(
+        #         #     f"{SERVICE_FRONTEND_URL}{request.url.path}",
+        #         #     status_code=302,
+        #         # )
+        #         clean_url = request.url.path
+        #         return RedirectResponse(clean_url, status_code=302)
+        #     log("Exchanging auth code with Verge Auth")
+
+        #     async with httpx.AsyncClient(timeout=60) as client:
+        #         resp = await client.post(
+        #             f"{AUTH_BASE_URL}/auth/exchange",
+        #             json={"code": code},
+        #             headers={
+        #                 "X-Client-Id": CLIENT_ID or "",
+        #                 "X-Client-Secret": CLIENT_SECRET or "",
+        #             },
+        #         )
+        #         log(f"Auth exchange response status: {resp.status_code}")
+        #         resp.raise_for_status()
+
+        #         token = resp.json().get("access_token")
+        #         log(f"Access token received: {'YES' if token else 'NO'}")
+
+        #         if not token:
+        #             log("Authorization failed: no token returned")
+        #             return JSONResponse(
+        #                 {"detail": "Authorization failed"},
+        #                 status_code=401,
+        #             )
+
+        #         frontend_redirect_url = (
+        #             f"{SERVICE_FRONTEND_URL}{request.url.path}"
+        #         )
+        #         log(f"frontend_redirect_url, {frontend_redirect_url}")
+        #         response = RedirectResponse(
+        #             frontend_redirect_url,
+        #             status_code=302,
+        #         )
+        #         response.set_cookie(
+        #             key="verge_access",
+        #             value=token,
+        #             **get_cookie_settings(request),
+        #         )
+        #         log("verge_access cookie set successfully")
+        #         return response
 
         # ------------------------------------------------------------
         # Step 2 — Extract token
         # ------------------------------------------------------------
         token = request.cookies.get("verge_access")
-
+        log(f"Cookie token present: {'YES' if token else 'NO'}")
         if not token:
             auth = request.headers.get("authorization")
             if auth and auth.lower().startswith("bearer "):
                 token = auth.split(" ", 1)[1]
+                log("Token extracted from Authorization header")
+        import json
+        
+        raw_public_paths = os.getenv("PUBLIC_PATHS", "")
+        log(f"Raw PUBLIC_PATHS env var: '{raw_public_paths}'")
+        
+        # Try to parse as JSON first, fallback to comma-separated
+        try:
+            if raw_public_paths.startswith("["):
+                PUBLIC_PATHS = set(json.loads(raw_public_paths))
+            else:
+                PUBLIC_PATHS = {
+                    "/" + p.strip("/ ")
+                    for p in raw_public_paths.split(",")
+                    if p.strip()
+                }
+        except (json.JSONDecodeError, Exception) as e:
+            log(f"Failed to parse PUBLIC_PATHS: {e}, falling back to comma-separated")
+            PUBLIC_PATHS = {
+                "/" + p.strip("/ ")
+                for p in raw_public_paths.split(",")
+                if p.strip()
+            }
+        
+        log(f"Parsed public paths: {PUBLIC_PATHS}")
 
-        PUBLIC_PATHS = {
-            "/" + p.strip("/ ")
-            for p in os.getenv("PUBLIC_PATHS", "").split(",")
-            if p.strip()
-        }
+        frontend_target = f"{SERVICE_FRONTEND_URL}{request.url.path}"
 
         if not token:
             if normalized_path in PUBLIC_PATHS:
+                log("Public path accessed without token, allowing")
                 return await call_next(request)
 
             login_url = (
-                f"{os.getenv('AUTH_LOGIN_URL')}?"
-                f"redirect_url={get_external_url(request)}"
+                f"{AUTH_BASE_URL}/login?"
+                f"redirect_uri={frontend_target}"
             )
+            log(f"No token found, redirecting to login: {login_url}")
             return RedirectResponse(login_url, status_code=302)
 
         # ------------------------------------------------------------
@@ -218,52 +311,113 @@ def add_central_auth(app: FastAPI):
                 algorithms=JWT_ALGORITHMS,
                 options={"require": ["exp", "iat"]},
             )
+
+            log("JWT successfully decoded")
+            log(f"JWT payload: {payload}")
+
+            request.state.auth = {
+                "auth_user_id": payload["user_id"],
+                "organization_id": payload["organization_id"],
+                "tenant_id": payload.get("tenant_id"),
+                "scope": payload["scope"],
+                "roles": payload.get("roles", []),
+            }
         except jwt.ExpiredSignatureError:
+            log("JWT expired, redirecting to login")
             response = RedirectResponse(
-                f"{os.getenv('AUTH_LOGIN_URL')}?"
-                f"redirect_url={request.url}&reason=expired",
+                f"{AUTH_BASE_URL}/login?"
+                f"redirect_uri={frontend_target}&reason=expired",
                 status_code=302,
             )
             response.delete_cookie("verge_access")
             return response
 
-        except jwt.InvalidTokenError:
+        except jwt.InvalidTokenError as e:
+            log(f"Invalid JWT: {str(e)}")
             response = RedirectResponse(
-                f"{os.getenv('AUTH_LOGIN_URL')}?"
-                f"redirect_url={request.url}&reason=invalid",
+                f"{AUTH_BASE_URL}/login?"
+                f"redirect_uri={frontend_target}&reason=invalid",
                 status_code=302,
             )
             response.delete_cookie("verge_access")
             return response
 
-        # # ------------------------------------------------------------
-        # # Step 4 — Introspect (optional)
-        # # ------------------------------------------------------------
-        # if INTROSPECT_URL:
-        #     async with httpx.AsyncClient(timeout=5) as client:
-        #         resp = await client.post(
-        #             INTROSPECT_URL,
-        #             headers={
-        #                 "Authorization": f"Bearer {token}",
-        #                 "X-Client-Id": CLIENT_ID or "",
-        #                 "X-Client-Secret": CLIENT_SECRET or "",
-        #             },
-        #         )
-        #         if resp.status_code != 200:
-        #             return RedirectResponse(
-        #                 os.getenv("AUTH_LOGIN_URL"),
-        #                 status_code=302,
-        #             )
-
-        # ------------------------------------------------------------
+    # ------------------------------------------------------------
         # Step 5 — Authorization check
         # ------------------------------------------------------------
-        permissions = payload.get("roles", [])
-        route_path = normalized_path or "/"
+        ctx = request.state.auth
+        permissions = ctx["roles"]
+        
+        # Automatic route detection - no configuration needed
+        original_path = request.url.path
         method = request.method.upper()
-
-        required_key = f"{SERVICE_NAME}:{route_path}:{method}".lower()
-        if required_key not in [p.lower() for p in permissions]:
+        
+        # Auto-detect if we need to add a prefix based on registered routes
+        route_path = original_path
+        path_prefix = ""
+        
+        # Check if the original path exists in registered routes
+        log(f"Available routes: {list(REGISTERED_ROUTES)[:10]}...")  # Show first 10 routes
+        
+        # Check direct route match (with method and path consideration)
+        direct_match = any(route['path'] == original_path and route['method'] == method for route in REGISTERED_ROUTES)
+        
+        if not direct_match:
+            # Try to find a matching route by adding common prefixes
+            common_prefixes = ["/api", "/v1", "/api/v1", "/v2", "/api/v2"]
+            
+            for prefix in common_prefixes:
+                potential_path = prefix + original_path
+                # Try both with and without trailing slash
+                potential_paths = [potential_path, potential_path + "/", potential_path.rstrip('/') + '/']
+                
+                for path_variant in potential_paths:
+                    if any(route['path'] == path_variant and route['method'] == method for route in REGISTERED_ROUTES):
+                        route_path = path_variant
+                        path_prefix = prefix
+                        log(f"Auto-detected path prefix: {original_path} -> {route_path}")
+                        break
+                if route_path != original_path:
+                    break
+            else:
+                log(f"No route found for {original_path} in registered routes")
+                log(f"Tried prefixes: {common_prefixes}")
+                # Fallback: assume /api prefix if no route found
+                # Try with trailing slash first
+                fallback_path = "/api" + original_path + "/"
+                if any(route['path'] == fallback_path and route['method'] == method for route in REGISTERED_ROUTES):
+                    route_path = fallback_path
+                    path_prefix = "/api"
+                    log(f"Fallback: Using /api prefix with trailing slash -> {route_path}")
+                else:
+                    route_path = "/api" + original_path
+                    path_prefix = "/api"
+                    log(f"Fallback: Using /api prefix -> {route_path}")
+        else:
+            log(f"Route found directly: {original_path}")
+        
+        # Use standard permission format that matches auth server (no trailing slash)
+        permission_path = route_path.rstrip('/')  # Remove trailing slash for permissions
+        required_key = f"{SERVICE_NAME}:{permission_path}:{method}".lower()
+        
+        log(f"Request URL: {request.url}")
+        log(f"Original path: {original_path}")
+        log(f"Route path: {route_path}")
+        log(f"Request method: {method}")
+        log(f"SERVICE_NAME: {SERVICE_NAME}")
+        log(f"Detected prefix: {path_prefix}")
+        
+        log(f"=== AUTHORIZATION DEBUG ===")
+        log(f"Required permission: {required_key}")
+        log(f"User permissions count: {len(permissions)}")
+        log(f"User permissions: {permissions[:5]}...")  # Show first 5 permissions
+        
+        # Check if required permission exists
+        permission_exists = required_key in [p.lower() for p in permissions]
+        log(f"Permission check result: {permission_exists}")
+        
+        if not permission_exists:
+            log(f"ACCESS DENIED - Missing permission: {required_key}")
             return JSONResponse(
                 {
                     "detail": "Insufficient permissions",
@@ -271,7 +425,19 @@ def add_central_auth(app: FastAPI):
                 },
                 status_code=403,
             )
-
-        request.state.user = payload
+        
+        log("ACCESS GRANTED - Permission matched")
+        log("Permission granted, forwarding request")
+        
+        # Use the auto-detected route path for internal routing
+        if route_path != original_path:
+            # Modify the request scope for internal routing
+            log(f"Updating request scope: {original_path} -> {route_path}")
+            request.scope["path"] = route_path
+            request.scope["raw_path"] = route_path.encode()
+        else:
+            log(f"Using original path: {original_path}")
+        
         return await call_next(request)
-
+        
+        

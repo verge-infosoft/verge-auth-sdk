@@ -45,13 +45,12 @@ def get_cookie_domain():
 
 
 def get_cookie_settings(request: Request):
-    secure = is_request_secure(request)
-
     return {
         "httponly": True,
-        "secure": secure,
-        "samesite": "none" if secure else "lax",
+        "secure": True,
+        "samesite": "none",
         "path": "/",
+        "domain": get_cookie_domain(),
         "max_age": 28800,
     }
 
