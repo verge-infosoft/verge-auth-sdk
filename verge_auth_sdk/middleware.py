@@ -94,7 +94,7 @@ def add_central_auth(app: FastAPI):
             path = getattr(route, "path", None)
             methods = getattr(route, "methods", [])
 
-            if not path or path.startswith(("/docs", "/openapi", "/__verge__")):
+            if not path or path.startswith(("/__verge__", "/api/auth/", "/openapi.json")):
                 continue
 
             for method in methods:
@@ -150,6 +150,14 @@ def add_central_auth(app: FastAPI):
         # ------------------------------------------------------------
         if normalized_path.startswith("/__verge__"):
             log("Skipping internal Verge path")
+            return await call_next(request)
+
+        # ------------------------------------------------------------
+        # SDK-owned auth endpoints — bypass ALL auth (no JWT required)
+        # ------------------------------------------------------------
+        SDK_NO_AUTH_PATHS = {"/api/auth/exchange", "/openapi.json"}
+        if normalized_path in SDK_NO_AUTH_PATHS:
+            log(f"SDK internal path, bypassing all auth: {normalized_path}")
             return await call_next(request)
 
         # ------------------------------------------------------------
@@ -346,7 +354,7 @@ def add_central_auth(app: FastAPI):
         method = request.method.upper()
 
         # Auth check endpoints bypass permission enforcement (JWT still validated above)
-        PERMISSION_BYPASS_PATHS = {"/api/auth/me", "/api/auth/exchange"}
+        PERMISSION_BYPASS_PATHS = {"/api/auth/me"}
         if normalized_path in PERMISSION_BYPASS_PATHS:
             return await call_next(request)
 
