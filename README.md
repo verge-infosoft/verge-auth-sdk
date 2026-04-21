@@ -179,7 +179,6 @@ AUTH_LOGIN_URL=https://auth.vergeinfosoft.com/login
 
 ############## DO NOT CHANGE THIS #################################
 
-
 ################# CHANGE THESE AS PER DETAILS PROVIDED #############################################
 
 VERGE_CLIENT_ID=<client-id>
@@ -262,3 +261,88 @@ https://www.vergeinfosoft.com
 
 📧 Email
 contactus@vergeinfosoft.com
+
+# Verge Auth SDK Developer Guide
+
+## Overview
+
+The Verge Auth SDK provides secure identity and access management for FastAPI microservices and Python-based frameworks. It integrates seamlessly with the Verge Auth Platform to offer centralized identity, role management, and access control for modern SaaS applications.
+
+With a single line of code, your service is fully protected and becomes part of a unified authentication ecosystem:
+
+```python
+from verge_auth_sdk import add_central_auth
+add_central_auth(app)
+```
+
+## Features
+
+- **Centralized Login**: Users authenticate through the Verge Auth hosted login experience.
+- **Role-Based Access Control (RBAC)**: Manage roles and permissions centrally.
+- **Secure API Access**: Each API request is validated for permissions.
+- **Seamless Integration**: Minimal code changes required to secure your application.
+
+## Getting Started
+
+### Step 1: Install the SDK
+
+Install the Verge Auth SDK using pip:
+
+```bash
+pip install verge_auth_sdk
+```
+
+### Step 2: Integrate with FastAPI
+
+Add the following to your FastAPI application:
+
+```python
+from fastapi import FastAPI
+from verge_auth_sdk import add_central_auth
+
+app = FastAPI()
+
+@app.get("/api/example")
+def example_endpoint():
+    return {"message": "Hello, World!"}
+
+add_central_auth(app)
+```
+
+### Step 3: Configure Environment
+
+Create a `.env` file with your Verge Auth credentials and configuration:
+
+```env
+AUTH_FRONTEND_URL=https://app.vergeauth.in
+AUTH_BASE_URL=https://api.vergeauth.in
+SERVICE_NAME=your-service
+SERVICE_BASE_URL=https://api.yourdomain.com
+SERVICE_FRONTEND_URL=https://app.yourdomain.com
+VERGE_CLIENT_ID=<your client id>
+VERGE_CLIENT_SECRET=<your client secret>
+VERGE_SERVICE_SECRET=<your service secret>
+PUBLIC_PATHS=["/health"]
+```
+
+### Step 4: Protect Your Endpoints
+
+The SDK automatically protects your API endpoints. Ensure your roles and permissions are configured in the Verge Auth dashboard.
+
+## Advanced Configuration
+
+- **Custom Middleware**: Extend or customize the middleware to fit your needs.
+- **Multi-Tenancy Support**: Easily manage multiple tenants with built-in support.
+- **Logging and Monitoring**: Integrate with your logging and monitoring tools.
+
+## Support
+
+For more information and support, visit:
+
+- **Documentation**: [vergeinfosoft.com/docs](https://vergeinfosoft.com/docs)
+- **Email**: contactus@vergeinfosoft.com
+- **Website**: [vergeinfosoft.com](https://www.vergeinfosoft.com)
+
+---
+
+*Verge Auth SDK — Secure your applications with ease.*
