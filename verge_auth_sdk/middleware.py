@@ -1,9 +1,15 @@
 from fastapi import FastAPI, Request
 from fastapi.responses import RedirectResponse, JSONResponse
 import httpx
+
 import os
+
 import asyncio
+
 import jwt
+
+import json
+
 from typing import List
 
 from .secret_provider import get_secret
@@ -66,7 +72,6 @@ async def load_public_key(force: bool = False):
 
 def add_central_auth(app: FastAPI):
     AUTH_BASE_URL = os.getenv("AUTH_BASE_URL", "").rstrip("/")
-    AUTH_FRONTEND_URL = os.getenv("AUTH_FRONTEND_URL", AUTH_BASE_URL).rstrip("/")
     SERVICE_NAME = os.getenv("SERVICE_NAME")
     SERVICE_BASE_URL = os.getenv("SERVICE_BASE_URL")
 
@@ -94,7 +99,7 @@ def add_central_auth(app: FastAPI):
             path = getattr(route, "path", None)
             methods = getattr(route, "methods", [])
 
-            if not path or path.startswith(("/__verge__", "/api/auth/", "/openapi.json")):
+            if not path or path.startswith(("/docs", "/openapi", "/__verge__")):
                 continue
 
             for method in methods:
@@ -153,14 +158,6 @@ def add_central_auth(app: FastAPI):
             return await call_next(request)
 
         # ------------------------------------------------------------
-        # SDK-owned auth endpoints — bypass ALL auth (no JWT required)
-        # ------------------------------------------------------------
-        SDK_NO_AUTH_PATHS = {"/api/auth/exchange", "/openapi.json"}
-        if normalized_path in SDK_NO_AUTH_PATHS:
-            log(f"SDK internal path, bypassing all auth: {normalized_path}")
-            return await call_next(request)
-
-        # ------------------------------------------------------------
         # Step 1 — Handle auth code callback
         # ------------------------------------------------------------
         code = request.query_params.get("code")
@@ -172,8 +169,16 @@ def add_central_auth(app: FastAPI):
             if request.cookies.get("verge_access"):
                 log("Cookie exists, removing code and redirecting to frontend")
 
+                # Convert API path to frontend path for redirect
+                frontend_path = request.url.path
+                if frontend_path.startswith('/api/'):
+                    # Remove /api prefix for frontend
+                    frontend_path = frontend_path.replace('/api', '', 1)
+                    if frontend_path == '':
+                        frontend_path = '/'
+                
                 return RedirectResponse(
-                    f"{SERVICE_FRONTEND_URL}{request.url.path}",
+                    f"{SERVICE_FRONTEND_URL}{frontend_path}",
                     status_code=302,
                 )
 
@@ -198,8 +203,16 @@ def add_central_auth(app: FastAPI):
                         status_code=401,
                     )
 
+                # Convert API path to frontend path for redirect
+                frontend_path = request.url.path
+                if frontend_path.startswith('/api/'):
+                    # Remove /api prefix for frontend
+                    frontend_path = frontend_path.replace('/api', '', 1)
+                    if frontend_path == '':
+                        frontend_path = '/'
+                
                 response = RedirectResponse(
-                    f"{SERVICE_FRONTEND_URL}{request.url.path}",
+                    f"{SERVICE_FRONTEND_URL}{frontend_path}",
                     status_code=302,
                 )
 
@@ -210,80 +223,9 @@ def add_central_auth(app: FastAPI):
                 )
 
                 return response
-        # if code:
-        #     if request.cookies.get("verge_access"):
-        #         log("verge_access cookie already exists, stripping code and redirecting")
-
-        #         log("RedirectResponse initiated")
-        #         # return RedirectResponse(
-        #         #     f"{SERVICE_FRONTEND_URL}{request.url.path}",
-        #         #     status_code=302,
-        #         # )
-        #         clean_url = request.url.path
-        #         return RedirectResponse(clean_url, status_code=302)
-        #     log("Exchanging auth code with Verge Auth")
-
-        #     async with httpx.AsyncClient(timeout=60) as client:
-        #         resp = await client.post(
-        #             f"{AUTH_BASE_URL}/auth/exchange",
-        #             json={"code": code},
-        #             headers={
-        #                 "X-Client-Id": CLIENT_ID or "",
-        #                 "X-Client-Secret": CLIENT_SECRET or "",
-        #             },
-        #         )
-        #         log(f"Auth exchange response status: {resp.status_code}")
-        #         resp.raise_for_status()
-
-        #         token = resp.json().get("access_token")
-        #         log(f"Access token received: {'YES' if token else 'NO'}")
-
-        #         if not token:
-        #             log("Authorization failed: no token returned")
-        #             return JSONResponse(
-        #                 {"detail": "Authorization failed"},
-        #                 status_code=401,
-        #             )
-
-        #         frontend_redirect_url = (
-        #             f"{SERVICE_FRONTEND_URL}{request.url.path}"
-        #         )
-        #         log(f"frontend_redirect_url, {frontend_redirect_url}")
-        #         response = RedirectResponse(
-        #             frontend_redirect_url,
-        #             status_code=302,
-        #         )
-        #         response.set_cookie(
-        #             key="verge_access",
-        #             value=token,
-        #             **get_cookie_settings(request),
-        #         )
-        #         log("verge_access cookie set successfully")
-        #         return response
 
         # ------------------------------------------------------------
-        # Step 2 — Check public paths (always bypass, regardless of cookie)
-        # ------------------------------------------------------------
-        import json
-        raw_public_paths = os.getenv("PUBLIC_PATHS", "")
-        try:
-            if raw_public_paths.startswith("["):
-                PUBLIC_PATHS = set(json.loads(raw_public_paths))
-            else:
-                PUBLIC_PATHS = {
-                    "/" + p.strip("/ ")
-                    for p in raw_public_paths.split(",")
-                    if p.strip()
-                }
-        except (json.JSONDecodeError, Exception):
-            PUBLIC_PATHS = set()
-
-        if normalized_path in PUBLIC_PATHS:
-            log(f"Public path, skipping auth: {normalized_path}")
-            return await call_next(request)
-
-        # ------------------------------------------------------------
-        # Step 3 — Extract token
+        # Step 2 — Extract token
         # ------------------------------------------------------------
         token = request.cookies.get("verge_access")
         log(f"Cookie token present: {'YES' if token else 'NO'}")
@@ -292,14 +234,57 @@ def add_central_auth(app: FastAPI):
             if auth and auth.lower().startswith("bearer "):
                 token = auth.split(" ", 1)[1]
                 log("Token extracted from Authorization header")
+        
+        raw_public_paths = os.getenv("PUBLIC_PATHS", "")
+        log(f"Raw PUBLIC_PATHS env var: '{raw_public_paths}' (length: {len(raw_public_paths)})")
+        log(f"Raw PUBLIC_PATHS repr: {repr(raw_public_paths)}")
+        
+        # Try to parse as JSON first, fallback to comma-separated
+        try:
+            if raw_public_paths.startswith("["):
+                # Parse as JSON array
+                parsed_paths = json.loads(raw_public_paths)
+                log(f"JSON parsed paths: {parsed_paths}")
+                PUBLIC_PATHS = {"/" + p.strip("/ ") for p in parsed_paths if p.strip()}
+                log(f"JSON parsing successful: {PUBLIC_PATHS}")
+            else:
+                # Parse as comma-separated
+                PUBLIC_PATHS = {
+                    "/" + p.strip("/ ")
+                    for p in raw_public_paths.split(",")
+                    if p.strip()
+                }
+                log(f"Comma-separated parsing: {PUBLIC_PATHS}")
+        except (json.JSONDecodeError, Exception) as e:
+            log(f"Failed to parse PUBLIC_PATHS: {e}, falling back to comma-separated")
+            PUBLIC_PATHS = {
+                "/" + p.strip("/ ")
+                for p in raw_public_paths.split(",")
+                if p.strip()
+            }
+        
+        log(f"Parsed public paths: {PUBLIC_PATHS}")
 
         frontend_target = f"{SERVICE_FRONTEND_URL}{request.url.path}"
-
+        
+        # Convert API path to frontend path for login redirect
+        frontend_path = request.url.path
+        if frontend_path.startswith('/api/'):
+            # Remove /api prefix for frontend
+            frontend_path = frontend_path.replace('/api', '', 1)
+            if frontend_path == '':
+                frontend_path = '/'
+        
+        login_url = (
+            f"{AUTH_BASE_URL}/login?"
+            f"redirect_uri={SERVICE_FRONTEND_URL}{frontend_path}"
+        )
+        
         if not token:
-            login_url = (
-                f"{AUTH_FRONTEND_URL}/login?"
-                f"redirect_uri={frontend_target}"
-            )
+            if normalized_path in PUBLIC_PATHS:
+                log("Public path accessed without token, allowing")
+                return await call_next(request)
+
             log(f"No token found, redirecting to login: {login_url}")
             return RedirectResponse(login_url, status_code=302)
 
@@ -327,8 +312,8 @@ def add_central_auth(app: FastAPI):
         except jwt.ExpiredSignatureError:
             log("JWT expired, redirecting to login")
             response = RedirectResponse(
-                f"{AUTH_FRONTEND_URL}/login?"
-                f"redirect_uri={frontend_target}&reason=expired",
+                f"{AUTH_BASE_URL}/login?"
+                f"redirect_uri={SERVICE_FRONTEND_URL}{frontend_path}&reason=expired",
                 status_code=302,
             )
             response.delete_cookie("verge_access")
@@ -337,8 +322,8 @@ def add_central_auth(app: FastAPI):
         except jwt.InvalidTokenError as e:
             log(f"Invalid JWT: {str(e)}")
             response = RedirectResponse(
-                f"{AUTH_FRONTEND_URL}/login?"
-                f"redirect_uri={frontend_target}&reason=invalid",
+                f"{AUTH_BASE_URL}/login?"
+                f"redirect_uri={SERVICE_FRONTEND_URL}{frontend_path}&reason=invalid",
                 status_code=302,
             )
             response.delete_cookie("verge_access")
@@ -350,22 +335,53 @@ def add_central_auth(app: FastAPI):
         ctx = request.state.auth
         permissions = ctx["roles"]
         
+        # Automatic route detection - no configuration needed
         original_path = request.url.path
         method = request.method.upper()
-
-        # Auth check endpoints bypass permission enforcement (JWT still validated above)
-        PERMISSION_BYPASS_PATHS = {"/api/auth/me"}
-        if normalized_path in PERMISSION_BYPASS_PATHS:
-            return await call_next(request)
-
-        # Match directly against synced registered routes (normalize trailing slashes)
-        matched_route = next(
-            (r for r in REGISTERED_ROUTES
-             if r['path'].rstrip('/') == original_path.rstrip('/') and r['method'] == method),
-            None
-        )
-        route_path = matched_route['path'] if matched_route else original_path
-        log(f"Route match: {original_path} -> {route_path} (matched={matched_route is not None})")
+        
+        # Auto-detect if we need to add a prefix based on registered routes
+        route_path = original_path
+        path_prefix = ""
+        
+        # Check if the original path exists in registered routes
+        log(f"Available routes: {list(REGISTERED_ROUTES)[:10]}...")  # Show first 10 routes
+        
+        # Check direct route match (with method and path consideration)
+        direct_match = any(route['path'] == original_path and route['method'] == method for route in REGISTERED_ROUTES)
+        
+        if not direct_match:
+            # Try to find a matching route by adding common prefixes
+            common_prefixes = ["/api", "/v1", "/api/v1", "/v2", "/api/v2"]
+            
+            for prefix in common_prefixes:
+                potential_path = prefix + original_path
+                # Try both with and without trailing slash
+                potential_paths = [potential_path, potential_path + "/", potential_path.rstrip('/') + '/']
+                
+                for path_variant in potential_paths:
+                    if any(route['path'] == path_variant and route['method'] == method for route in REGISTERED_ROUTES):
+                        route_path = path_variant
+                        path_prefix = prefix
+                        log(f"Auto-detected path prefix: {original_path} -> {route_path}")
+                        break
+                if route_path != original_path:
+                    break
+            else:
+                log(f"No route found for {original_path} in registered routes")
+                log(f"Tried prefixes: {common_prefixes}")
+                # Fallback: assume /api prefix if no route found
+                # Try with trailing slash first
+                fallback_path = "/api" + original_path + "/"
+                if any(route['path'] == fallback_path and route['method'] == method for route in REGISTERED_ROUTES):
+                    route_path = fallback_path
+                    path_prefix = "/api"
+                    log(f"Fallback: Using /api prefix with trailing slash -> {route_path}")
+                else:
+                    route_path = "/api" + original_path
+                    path_prefix = "/api"
+                    log(f"Fallback: Using /api prefix -> {route_path}")
+        else:
+            log(f"Route found directly: {original_path}")
         
         # Use standard permission format that matches auth server (no trailing slash)
         permission_path = route_path.rstrip('/')  # Remove trailing slash for permissions
@@ -376,6 +392,7 @@ def add_central_auth(app: FastAPI):
         log(f"Route path: {route_path}")
         log(f"Request method: {method}")
         log(f"SERVICE_NAME: {SERVICE_NAME}")
+        log(f"Detected prefix: {path_prefix}")
         
         log(f"=== AUTHORIZATION DEBUG ===")
         log(f"Required permission: {required_key}")
