@@ -400,8 +400,8 @@ def add_central_auth(app: FastAPI):
         log(f"User permissions count: {len(permissions)}")
         log(f"User permissions: {permissions[:5]}...")  # Show first 5 permissions
         
-        # Check if required permission exists
-        permission_exists = required_key in [p.lower() for p in permissions]
+        # Check if required permission exists (wildcard * grants all)
+        permission_exists = "*" in permissions or required_key in [p.lower() for p in permissions]
         log(f"Permission check result: {permission_exists}")
         
         if not permission_exists:
