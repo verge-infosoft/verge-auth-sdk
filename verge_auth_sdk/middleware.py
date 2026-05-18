@@ -164,24 +164,6 @@ def add_central_auth(app: FastAPI):
         log(f"Auth code detected: {code}")
         if code:
             log("Auth code detected")
-
-            # If cookie already exists → just remove code and go to frontend
-            if request.cookies.get("verge_access"):
-                log("Cookie exists, removing code and redirecting to frontend")
-
-                # Convert API path to frontend path for redirect
-                frontend_path = request.url.path
-                if frontend_path.startswith('/api/'):
-                    # Remove /api prefix for frontend
-                    frontend_path = frontend_path.replace('/api', '', 1)
-                    if frontend_path == '':
-                        frontend_path = '/'
-                
-                return RedirectResponse(
-                    f"{SERVICE_FRONTEND_URL}{frontend_path}",
-                    status_code=302,
-                )
-
             log("Exchanging auth code with Verge Auth")
 
             async with httpx.AsyncClient(timeout=60) as client:
