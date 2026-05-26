@@ -320,6 +320,7 @@ def add_central_auth(app: FastAPI):
                 "tenant_id": payload.get("tenant_id"),
                 "scope": payload["scope"],
                 "roles": payload.get("roles", []),
+                "permissions": payload.get("permissions", []),
             }
         except jwt.ExpiredSignatureError:
             log("JWT expired, redirecting to login")
@@ -345,7 +346,7 @@ def add_central_auth(app: FastAPI):
         # Step 5 — Authorization check
         # ------------------------------------------------------------
         ctx = request.state.auth
-        permissions = ctx["roles"]
+        permissions = ctx.get("permissions", [])
         
         # Automatic route detection - no configuration needed
         original_path = request.url.path
