@@ -1,264 +1,373 @@
-🔐 Verge Auth SDK
+# Verge Auth SDK
 
-Secure Identity & Access Management for FastAPI Microservices and all Python-based frameworks Monolithic and Microservice Architectures
+**Secure Identity & Access Management for FastAPI Microservices**
 
-Verge Auth SDK is a lightweight integration library that connects your FastAPI microservices to the Verge Auth Platform — a centralized identity, role management, and access-control system built for modern SaaS applications.
+Verge Auth SDK connects your FastAPI application to the **Verge Auth Platform** — providing centralized login, role-based access control, and route-level permissions with a single line of code.
 
-With a single line of code, your service is fully protected and becomes part of a unified authentication ecosystem:
-
+```python
 from verge_auth_sdk import add_central_auth
 add_central_auth(app)
+```
 
-🚀 What Verge Auth Provides
+---
 
-✓ Centralized Login
+## Quick Start (5 Minutes)
 
-Your users authenticate through the Verge Auth hosted login experience.
+### Step 1: Install
 
-✓ Role-Based Access Control (RBAC)
-
-Create roles inside the Verge Auth Dashboard and assign access to microservices and their granular operations.
-
-✓ Route-Level Permissions
-
-When a service integrates the SDK, its available routes automatically appear in the Verge Auth dashboard for permissions assignment.
-
-✓ Group & User Management
-
-Assign roles to users or user groups for highly flexible access control.
-
-✓ Secure Communication
-
-All microservice-to-auth communication is secured using service credentials provided during onboarding.
-
-🧭 End-to-End User Flow
-
-1. Account Creation
-
-Users sign up with their organization details, company domain, and email.
-
-2. Email Verification
-
-A verification email is sent to the registered address.
-
-Once verified, the user is redirected to the Verge Auth platform.
-
-3. Login
-
-Users can sign in through the “Verge IAM” login page using their verified email and password.
-
-4. Auth Dashboard
-
-Once logged in, the dashboard displays:
-
-Total users
-
-Active groups
-
-Available roles
-
-Audit logs
-
-Permissions overview
-
-🎛 Role-Based Access Control (RBAC)
-
-RBAC inside Verge Auth is designed to be extremely intuitive — while supporting enterprise-level control.
-
-Creating a Role
-
-Inside the Roles section:
-
-Click New Role
-
-Enter the role name (e.g., HR Manager, Operations Admin)
-
-Optional: Add a description
-
-Select the Service you want this role to access
-
-Example: employees-service, billing-service, appointments-service
-
-After selecting a service, the system automatically shows all available routes for that service
-
-Example:
-
-/employees/
-
-/employees/{id}
-
-/employees/create
-
-/employees/update
-
-/employees/delete
-
-Each route is presented with clear CRUD permissions:
-
-Create
-
-Read
-
-Update
-
-Delete
-
-You can either:
-
-Grant Full Access to that service
-
-OR choose granular permissions route-by-route
-
-Save the role
-
-It instantly becomes available for assignment
-
-Role creation modal with a dropdown for service selection and an auto-generated route list for CRUD assignment.
-
-🧑‍🤝‍🧑 Assigning Roles to Users or Groups
-
-After creating a role, you can:
-
-Assign to a User
-
-Go to Manage Users
-
-Edit a user
-
-Select one or more roles
-
-Save changes
-
-Assign to a User Group
-
-Create a group (e.g., HR Team, Finance Department)
-
-Assign roles to the group
-
-Add users into the group
-(they automatically inherit the group’s permissions)
-
-This makes onboarding smoother and keeps role management scalable.
-
-🔌 Integrating the SDK Into a Microservice
-
-Install from PyPI
+```bash
 pip install verge_auth_sdk
+```
 
-Add the Middleware
+### Step 2: Add to your FastAPI app
+
+```python
 from fastapi import FastAPI
 from verge_auth_sdk import add_central_auth
 
 app = FastAPI()
 
-# call this at the last line of your apps main
+# Your routes here...
+
+# IMPORTANT: This must be the LAST line in your main.py
 add_central_auth(app)
+```
 
-That’s it.
-The service will now:
+### Step 3: Configure environment variables
 
-✓ Authenticate incoming requests
-✓ Communicate securely with Verge Auth
-✓ Provide user identity + roles
-✓ Secure synchronization of service access metadata for centralized permission governance.
+Create a `.env` file (or set these in your deployment):
 
-⚙ Environment Configuration
+```env
+# ─── VERGE AUTH PLATFORM (DO NOT CHANGE) ───────────────────────────
+AUTH_BASE_URL=https://api.vergeauth.in
 
-Each service requires a minimal set of environment variables:
-Exact endpoint configurations and integration details may vary by deployment and are abstracted by the SDK.
+# ─── YOUR SERVICE CREDENTIALS (provided during onboarding) ─────────
+VERGE_CLIENT_ID=<your-client-id>
+VERGE_CLIENT_SECRET=<your-client-secret>
+VERGE_SERVICE_SECRET=<your-service-integration-secret>
 
-############## DO NOT CHANGE THIS #################################
+# ─── YOUR SERVICE DETAILS ──────────────────────────────────────────
+SERVICE_NAME=<your-service-name>
+SERVICE_BASE_URL=<your-backend-url>
+SERVICE_FRONTEND_URL=<your-frontend-url>
+```
 
-AUTH_BASE_URL=https://auth.vergeinfosoft.com
-AUTH_SESSION_URL=https://auth.vergeinfosoft.com/session
-AUTH_INTROSPECT_URL=https://auth.vergeinfosoft.com/introspect
-AUTH_REGISTER_URL=https://auth.vergeinfosoft.com/service-registry/register
-AUTH_ROUTE_SYNC_URL=https://auth.vergeinfosoft.com/route-sync
-AUTH_PUBLIC_KEY_URL=https://auth.vergeinfosoft.com/auth/keys/public 
-AUTH_LOGIN_URL=https://auth.vergeinfosoft.com/login
+**That's it.** Your service is now protected.
 
-############## DO NOT CHANGE THIS #################################
+---
 
+## How It Works
 
-################# CHANGE THESE AS PER DETAILS PROVIDED #############################################
+### Authentication Flow
 
-VERGE_CLIENT_ID=<client-id>
-VERGE_CLIENT_SECRET=<client-secret>
-VERGE_SERVICE_SECRET=<service-integration-secret>
-# These are provided by Verge Infosoft during onboarding.
+```
+User → vergeauth.in/login → Verge Auth Dashboard → "Launch" service
+  → Auth code issued → Redirects to your app with ?code=xxx
+  → SDK exchanges code for JWT → Sets httponly cookie (verge_access)
+  → All subsequent requests verified via JWT
+```
 
-####################################################################################################
+### What Happens on Startup
 
+When your app starts, the SDK automatically:
 
-# Select Optional secret provider:
+1. **Fetches the public key** from Verge Auth (for JWT verification)
+2. **Registers your service** with the Verge Auth platform
+3. **Syncs all your routes** to the Verge Auth dashboard (so admins can assign permissions)
 
-SECRETS_PROVIDER=env | AZURE | AWS | GCP | ORACLE # Supported cloud providers for secret management
+### What Happens on Every Request
 
-env=env # if you want to load from your local ENV 
-azure=<AZURE_URL>
-aws=<AWS_URL>
-gcp=<GCP_URL>
-oracle=<ORACLE_URL>
+1. **Extracts token** from `verge_access` cookie or `Authorization: Bearer` header
+2. **Verifies JWT signature** using the platform's public key
+3. **Checks route permission** — the JWT contains a `permissions` array with entries like `service-name:/api/path:method`
+4. **Grants or denies** access (403 if permission missing)
 
-########################################################################
+---
 
-SERVICE_NAME=<SERVICE_NAME>  # example billing service or hr service
-SERVICE_BASE_URL=<SERVICE_BASE_URL>  example https://hr.yourdomain.com
+## Environment Variables Reference
 
-########################################################################
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `AUTH_BASE_URL` | Yes | Verge Auth API endpoint (always `https://api.vergeauth.in`) |
+| `VERGE_CLIENT_ID` | Yes | Your client ID (provided during onboarding) |
+| `VERGE_CLIENT_SECRET` | Yes | Your client secret (provided during onboarding) |
+| `VERGE_SERVICE_SECRET` | Yes | Service integration secret (provided during onboarding) |
+| `SERVICE_NAME` | Yes | Must match exactly what's registered in Verge Auth dashboard (e.g., `hrms-service`) |
+| `SERVICE_BASE_URL` | Yes | Your backend's public URL (e.g., `https://api.yourapp.com`) |
+| `SERVICE_FRONTEND_URL` | Yes | Your frontend's public URL (e.g., `https://app.yourapp.com`) |
+| `PUBLIC_PATHS` | No | JSON array of paths that don't require authentication (e.g., `["/health", "/docs"]`) |
+| `SECRETS_PROVIDER` | No | Secret provider: `env` (default), `aws`, `azure`, `gcp`, `oracle` |
 
+---
 
+## Permission System
 
-🛡 Middleware Responsibilities
+### How Permissions Work
 
-The SDK transparently handles:
+Permissions are **route-level keys** in the format:
 
-User authentication
+```
+<service-name>:<path>:<method>
+```
 
-Role injection
+**Examples:**
+- `hrms-service:/api/employees:get` — Can list employees
+- `hrms-service:/api/employees:post` — Can create employees
+- `hrms-service:/api/dashboard/stats:get` — Can view dashboard
+- `hrms-service:/api/auth/me:get` — Can access the auth/me endpoint (required for all users)
 
-Cookie vs header auth
+### Important: The `/auth/me` Permission
 
-Unauthorized access responses
+Every role that accesses your service **must** have the `/api/auth/me GET` permission assigned. This is the baseline "can access this service" gate. Without it, users cannot authenticate.
 
-Service-level authentication
+### Wildcard Permission
 
-Route registration
+Users with `PLATFORM_OWNER` role receive `permissions: ["*"]` which grants access to all routes without needing individual assignments.
 
-You do not need to implement any auth or RBAC logic manually.
+---
 
-🔐 Security Highlights
+## Frontend Integration Guide
 
-Industry-standard asymmetric token verification with key rotation support
+### Required: `/auth/me` Endpoint
 
-Centralized session & token lifecycle management
+Your backend needs a simple endpoint that returns the authenticated user's context:
 
-Strong encryption for service credentials
+```python
+from fastapi import APIRouter, Request
 
-Multi-layer permission checks (Role → Service → Route → Operation)
+router = APIRouter(prefix="/auth", tags=["Auth"])
 
-HTTPS-only communication
+@router.get("/me")
+def get_current_user(request: Request):
+    return request.state.auth
+```
 
-Support for cloud key vaults
+This returns:
+```json
+{
+  "auth_user_id": 1,
+  "organization_id": 1,
+  "tenant_id": null,
+  "scope": "platform",
+  "roles": ["HR Manager"],
+  "permissions": [
+    "hrms-service:/api/auth/me:get",
+    "hrms-service:/api/employees:get",
+    "hrms-service:/api/dashboard/stats:get"
+  ]
+}
+```
 
-💼 Ideal For (including but not limited to):
+### Frontend Auth Context (React Example)
 
-HRMS, ERP, CRM, Billing platforms
+```javascript
+// AuthContext.jsx
+import { createContext, useContext, useEffect, useState } from "react";
+import api from "../services/api";
 
-Multi-tenant SaaS applications
+const AuthContext = createContext();
 
-Modern microservice architectures
+export function AuthProvider({ children }) {
+  const [isAuthenticated, setIsAuthenticated] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [permissions, setPermissions] = useState([]);
 
-Secure admin dashboards
+  useEffect(() => {
+    api.get("/auth/me")
+      .then((res) => {
+        setIsAuthenticated(true);
+        setPermissions(res.data.permissions || []);
+      })
+      .catch((err) => {
+        if (err.response && err.response.status === 403) {
+          setIsAuthenticated(true); // authenticated but missing route permission
+        } else {
+          setIsAuthenticated(false);
+        }
+      })
+      .finally(() => setLoading(false));
+  }, []);
 
-Enterprise platforms needing consistent access control
+  const hasPermission = (permission) => {
+    return permissions.some(p => p.toLowerCase() === permission.toLowerCase());
+  };
 
-🆘 Support & Onboarding
+  const hasAnyPermission = (permissionList) => {
+    return permissionList.some(perm =>
+      permissions.some(p => p.toLowerCase() === perm.toLowerCase())
+    );
+  };
 
-For enterprise onboarding, custom integrations, or troubleshooting:
+  return (
+    <AuthContext.Provider value={{ isAuthenticated, loading, permissions, hasPermission, hasAnyPermission }}>
+      {children}
+    </AuthContext.Provider>
+  );
+}
 
-🌐 Website
-https://www.vergeinfosoft.com
+export const useAuth = () => useContext(AuthContext);
+```
 
-📧 Email
-contactus@vergeinfosoft.com
+### Route Protection (React Example)
+
+```javascript
+// ProtectedRoute.jsx
+import { useAuth } from "../context/AuthContext";
+
+export default function ProtectedRoute({ children, requiredPermissions = [] }) {
+  const { loading, isAuthenticated, hasAnyPermission } = useAuth();
+
+  if (loading) return <div>Loading...</div>;
+
+  if (!isAuthenticated) {
+    window.location.href = "https://vergeauth.in/login?redirect_url=" +
+      encodeURIComponent(window.location.origin + "/auth/callback");
+    return null;
+  }
+
+  if (requiredPermissions.length > 0 && !hasAnyPermission(requiredPermissions)) {
+    return <div>Access Denied</div>;
+  }
+
+  return children;
+}
+```
+
+### Auth Callback Page
+
+```javascript
+// AuthCallback.jsx — handles the ?code= redirect from Verge Auth
+import { useEffect } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import api from "../services/api";
+
+export default function AuthCallback() {
+  const [params] = useSearchParams();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const code = params.get("code");
+    if (code) {
+      // Hit backend with code — SDK middleware will exchange it and set cookie
+      api.get(`/auth/callback?code=${code}`)
+        .then(() => navigate("/"))
+        .catch(() => navigate("/"));
+    }
+  }, []);
+
+  return <div>Authenticating...</div>;
+}
+```
+
+### Axios Configuration
+
+```javascript
+// api.js
+import axios from "axios";
+
+const api = axios.create({
+  baseURL: "/api",        // proxied to backend
+  withCredentials: true,  // REQUIRED: sends httponly cookies
+});
+
+export default api;
+```
+
+### Nginx Configuration (Frontend + Backend)
+
+```nginx
+server {
+    listen 80;
+    server_name app.yourservice.com;
+
+    # Frontend
+    location / {
+        proxy_pass http://frontend:80;
+    }
+
+    # Backend API
+    location /api/ {
+        proxy_pass http://backend:8001/api/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # Auth callback (SDK intercepts ?code=)
+    location /auth/callback {
+        proxy_pass http://backend:8001/auth/callback;
+        proxy_set_header Host $host;
+    }
+
+    # Logout — clears the httponly cookie at nginx level
+    location /auth/logout {
+        add_header Set-Cookie "verge_access=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax" always;
+        return 302 https://vergeauth.in/login;
+    }
+}
+```
+
+> **Important:** The SDK sets `verge_access` as an httponly cookie — JavaScript cannot clear it. Logout must be handled at the Nginx level.
+
+---
+
+## Setting Up Roles in Verge Auth Dashboard
+
+### Step 1: Create a Role
+
+1. Go to **Roles** → **New Role**
+2. Enter role name (e.g., `HR Manager`)
+3. Select the **Service** (e.g., `hrms-service`)
+4. The system shows all synced routes with methods
+5. Check the routes this role should access
+6. **Always include** `/api/auth/me GET` for any role that accesses the service
+7. Save
+
+### Step 2: Assign Role to Users
+
+**Direct assignment:**
+- Go to **Users** → Edit user → Select roles → Save
+
+**Via Group (recommended for teams):**
+- Create a group (e.g., `HR Team`)
+- Assign roles to the group
+- Add users to the group — they inherit all group permissions automatically
+
+### Minimum Required Permissions for Any Service Role
+
+| Route | Method | Why |
+|-------|--------|-----|
+| `/api/auth/me` | GET | Required for authentication check |
+| `/api/<page-endpoint>` | GET | The page(s) the user should see |
+
+---
+
+## Key Notes
+
+- **`SERVICE_NAME` must match exactly** between your env var and the Verge Auth dashboard (e.g., `hrms-service`, not `hrms`)
+- **Login URL uses `redirect_url`** param (not `redirect_uri`)
+- **SDK checks ALL routes** including `/auth/me` — 403 means authenticated but missing that specific route permission
+- **Permissions come from both direct roles AND group-inherited roles**
+- **Cookie is httponly** — logout must clear it at the web server level (Nginx)
+- **Routes sync automatically** on service startup — no manual registration needed
+
+---
+
+## Security Highlights
+
+- RS256 asymmetric JWT verification (no shared secret between services)
+- Persistent key management with key rotation support
+- httponly, secure cookies for token storage
+- Service-to-service authentication via client credentials
+- Multi-layer permission checks: Role → Service → Route → Method
+- Support for cloud secret vaults (AWS, Azure, GCP, Oracle)
+
+---
+
+## Support
+
+For onboarding, custom integrations, or troubleshooting:
+
+- **Website:** https://www.vergeinfosoft.com
+- **Email:** contactus@vergeinfosoft.com

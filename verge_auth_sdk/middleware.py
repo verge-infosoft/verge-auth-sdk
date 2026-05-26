@@ -309,11 +309,23 @@ def add_central_auth(app: FastAPI):
                 token,
                 JWT_PUBLIC_KEY,
                 algorithms=JWT_ALGORITHMS,
-                options={"require": ["exp", "iat"]},
+                options={"require": ["exp", "iat"], "verify_aud": False},
             )
 
             log("JWT successfully decoded")
             log(f"JWT payload: {payload}")
+
+            # Validate audience matches service name
+            token_audience = payload.get("aud")
+            if token_audience and token_audience != SERVICE_NAME:
+                log(f"Invalid audience: {token_audience} (expected: {SERVICE_NAME})")
+                response = RedirectResponse(
+                    f"{AUTH_BASE_URL}/login?"
+                    f"redirect_uri={frontend_target}&reason=invalid",
+                    status_code=302,
+                )
+                response.delete_cookie("verge_access")
+                return response
 
             request.state.auth = {
                 "auth_user_id": payload["user_id"],
