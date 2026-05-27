@@ -56,31 +56,9 @@ SERVICE_FRONTEND_URL=<your-frontend-url>
 
 ---
 
-## How It Works
+## Enterprise Security & Access Enforcement
 
-### Authentication Flow
-
-```
-User → vergeauth.in/login → Verge Auth Dashboard → "Launch" service
-  → Auth code issued → Redirects to your app with ?code=xxx
-  → SDK exchanges code for JWT → Sets httponly cookie (verge_access)
-  → All subsequent requests verified via JWT
-```
-
-### What Happens on Startup
-
-When your app starts, the SDK automatically:
-
-1. **Fetches the public key** from Verge Auth (for JWT verification)
-2. **Registers your service** with the Verge Auth platform
-3. **Syncs all your routes** to the Verge Auth dashboard (so admins can assign permissions)
-
-### What Happens on Every Request
-
-1. **Extracts token** from `verge_access` cookie or `Authorization: Bearer` header
-2. **Verifies JWT signature** using the platform's public key
-3. **Checks route permission** — the JWT contains a `permissions` array with entries like `service-name:/api/path:method`
-4. **Grants or denies** access (403 if permission missing)
+Verge Auth automatically secures protected application routes, validates authenticated sessions, and enforces centralized authorization policies across your services.
 
 ---
 
@@ -102,35 +80,15 @@ When your app starts, the SDK automatically:
 
 ## Permission System
 
-### How Permissions Work
-
-Permissions are **route-level keys** in the format:
-
-```
-<service-name>:<path>:<method>
-```
-
-**Examples:**
-- `hrms-service:/api/employees:get` — Can list employees
-- `hrms-service:/api/employees:post` — Can create employees
-- `hrms-service:/api/dashboard/stats:get` — Can view dashboard
-- `hrms-service:/api/auth/me:get` — Can access the auth/me endpoint (required for all users)
-
-### Important: The `/auth/me` Permission
-
-Every role that accesses your service **must** have the `/api/auth/me GET` permission assigned. This is the baseline "can access this service" gate. Without it, users cannot authenticate.
-
-### Wildcard Permission
-
-Users with `PLATFORM_OWNER` role receive `permissions: ["*"]` which grants access to all routes without needing individual assignments.
+Verge Auth supports fine-grained, route-aware authorization policies aligned with your application structure.
 
 ---
 
 ## Frontend Integration Guide
 
-### Required: `/auth/me` Endpoint
+### User Context Endpoint
 
-Your backend needs a simple endpoint that returns the authenticated user's context:
+Applications should expose an authenticated user context endpoint for frontend session awareness.
 
 ```python
 from fastapi import APIRouter, Request
@@ -149,12 +107,7 @@ This returns:
   "organization_id": 1,
   "tenant_id": null,
   "scope": "platform",
-  "roles": ["HR Manager"],
-  "permissions": [
-    "hrms-service:/api/auth/me:get",
-    "hrms-service:/api/employees:get",
-    "hrms-service:/api/dashboard/stats:get"
-  ]
+  "roles": ["HR Manager"]
 }
 ```
 
@@ -170,17 +123,17 @@ const AuthContext = createContext();
 export function AuthProvider({ children }) {
   const [isAuthenticated, setIsAuthenticated] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [permissions, setPermissions] = useState([]);
+  const [user, setUser] = useState(null);
 
   useEffect(() => {
     api.get("/auth/me")
       .then((res) => {
         setIsAuthenticated(true);
-        setPermissions(res.data.permissions || []);
+        setUser(res.data);
       })
       .catch((err) => {
         if (err.response && err.response.status === 403) {
-          setIsAuthenticated(true); // authenticated but missing route permission
+          setIsAuthenticated(true);
         } else {
           setIsAuthenticated(false);
         }
@@ -188,18 +141,8 @@ export function AuthProvider({ children }) {
       .finally(() => setLoading(false));
   }, []);
 
-  const hasPermission = (permission) => {
-    return permissions.some(p => p.toLowerCase() === permission.toLowerCase());
-  };
-
-  const hasAnyPermission = (permissionList) => {
-    return permissionList.some(perm =>
-      permissions.some(p => p.toLowerCase() === perm.toLowerCase())
-    );
-  };
-
   return (
-    <AuthContext.Provider value={{ isAuthenticated, loading, permissions, hasPermission, hasAnyPermission }}>
+    <AuthContext.Provider value={{ isAuthenticated, loading, user }}>
       {children}
     </AuthContext.Provider>
   );
@@ -214,8 +157,8 @@ export const useAuth = () => useContext(AuthContext);
 // ProtectedRoute.jsx
 import { useAuth } from "../context/AuthContext";
 
-export default function ProtectedRoute({ children, requiredPermissions = [] }) {
-  const { loading, isAuthenticated, hasAnyPermission } = useAuth();
+export default function ProtectedRoute({ children, requiredRole }) {
+  const { loading, isAuthenticated, user } = useAuth();
 
   if (loading) return <div>Loading...</div>;
 
@@ -225,7 +168,7 @@ export default function ProtectedRoute({ children, requiredPermissions = [] }) {
     return null;
   }
 
-  if (requiredPermissions.length > 0 && !hasAnyPermission(requiredPermissions)) {
+  if (requiredRole && !user?.roles?.includes(requiredRole)) {
     return <div>Access Denied</div>;
   }
 
@@ -236,7 +179,7 @@ export default function ProtectedRoute({ children, requiredPermissions = [] }) {
 ### Auth Callback Page
 
 ```javascript
-// AuthCallback.jsx — handles the ?code= redirect from Verge Auth
+// AuthCallback.jsx — handles the redirect from Verge Auth
 import { useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import api from "../services/api";
@@ -248,7 +191,6 @@ export default function AuthCallback() {
   useEffect(() => {
     const code = params.get("code");
     if (code) {
-      // Hit backend with code — SDK middleware will exchange it and set cookie
       api.get(`/auth/callback?code=${code}`)
         .then(() => navigate("/"))
         .catch(() => navigate("/"));
@@ -259,6 +201,8 @@ export default function AuthCallback() {
 }
 ```
 
+The SDK securely completes authentication and establishes the user session automatically.
+
 ### Axios Configuration
 
 ```javascript
@@ -266,8 +210,8 @@ export default function AuthCallback() {
 import axios from "axios";
 
 const api = axios.create({
-  baseURL: "/api",        // proxied to backend
-  withCredentials: true,  // REQUIRED: sends httponly cookies
+  baseURL: "/api",
+  withCredentials: true,
 });
 
 export default api;
@@ -294,21 +238,19 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 
-    # Auth callback (SDK intercepts ?code=)
+    # Auth callback
     location /auth/callback {
         proxy_pass http://backend:8001/auth/callback;
         proxy_set_header Host $host;
     }
 
-    # Logout — clears the httponly cookie at nginx level
+    # Logout
     location /auth/logout {
         add_header Set-Cookie "verge_access=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax" always;
         return 302 https://vergeauth.in/login;
     }
 }
 ```
-
-> **Important:** The SDK sets `verge_access` as an httponly cookie — JavaScript cannot clear it. Logout must be handled at the Nginx level.
 
 ---
 
@@ -319,10 +261,9 @@ server {
 1. Go to **Roles** → **New Role**
 2. Enter role name (e.g., `HR Manager`)
 3. Select the **Service** (e.g., `hrms-service`)
-4. The system shows all synced routes with methods
+4. The system displays available application resources for access configuration.
 5. Check the routes this role should access
-6. **Always include** `/api/auth/me GET` for any role that accesses the service
-7. Save
+6. Save
 
 ### Step 2: Assign Role to Users
 
@@ -334,23 +275,23 @@ server {
 - Assign roles to the group
 - Add users to the group — they inherit all group permissions automatically
 
-### Minimum Required Permissions for Any Service Role
-
-| Route | Method | Why |
-|-------|--------|-----|
-| `/api/auth/me` | GET | Required for authentication check |
-| `/api/<page-endpoint>` | GET | The page(s) the user should see |
-
 ---
 
 ## Key Notes
 
 - **`SERVICE_NAME` must match exactly** between your env var and the Verge Auth dashboard (e.g., `hrms-service`, not `hrms`)
 - **Login URL uses `redirect_url`** param (not `redirect_uri`)
-- **SDK checks ALL routes** including `/auth/me` — 403 means authenticated but missing that specific route permission
-- **Permissions come from both direct roles AND group-inherited roles**
-- **Cookie is httponly** — logout must clear it at the web server level (Nginx)
-- **Routes sync automatically** on service startup — no manual registration needed
+- Application authorization policies remain synchronized automatically.
+
+---
+
+## Enterprise Features
+
+- **Centralized Authentication** — Single sign-on across all your services
+- **Role-Based Access Control** — Granular permissions at the user, group, and role level
+- **Audit Logging** — Track authentication events and access attempts
+- **SSO & MFA** — Enterprise-grade security with multi-factor authentication
+- **Multi-Tenant Support** — Isolate data and permissions across organizations
 
 ---
 
@@ -360,7 +301,6 @@ server {
 - Persistent key management with key rotation support
 - httponly, secure cookies for token storage
 - Service-to-service authentication via client credentials
-- Multi-layer permission checks: Role → Service → Route → Method
 - Support for cloud secret vaults (AWS, Azure, GCP, Oracle)
 
 ---
