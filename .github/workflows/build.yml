@@ -2,23 +2,31 @@ name: Build & Publish Verge Auth SDK
 
 on:
   push:
-    tags:
-      - "v*.*.*"
+    branches:
+      - main
+  workflow_dispatch:
+
+# Prevent overlapping runs from racing on the version bump / git push
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
-  build:
-    name: Build wheels on ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
-
-    strategy:
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+  build-and-publish:
+    name: Bump, build & publish to PyPI
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # needed to commit the version bump back
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Ensure we push the bump to the same branch that triggered the run
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
@@ -27,30 +35,49 @@ jobs:
           python -m pip install --upgrade pip
           pip install build wheel setuptools
 
+      - name: Bump patch version in pyproject.toml
+        id: bump
+        run: |
+          python - <<'EOF'
+          import os, re, pathlib
+
+          path = pathlib.Path("pyproject.toml")
+          text = path.read_text()
+
+          match = re.search(r'^version\s*=\s*"(\d+)\.(\d+)\.(\d+)"', text, re.M)
+          if not match:
+              raise SystemExit("Could not find a version = \"X.Y.Z\" line in pyproject.toml")
+
+          major, minor, patch = map(int, match.groups())
+          new_version = f"{major}.{minor}.{patch + 1}"
+
+          text = re.sub(
+              r'^(version\s*=\s*)"\d+\.\d+\.\d+"',
+              rf'\g<1>"{new_version}"',
+              text,
+              count=1,
+              flags=re.M,
+          )
+          path.write_text(text)
+
+          with open(os.environ["GITHUB_OUTPUT"], "a") as out:
+              out.write(f"version={new_version}\n")
+
+          print(f"Bumped version to {new_version}")
+          EOF
+
+      - name: Commit version bump
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add pyproject.toml
+          git commit -m "ci: bump version to ${{ steps.bump.outputs.version }} [skip ci]"
+          git push origin HEAD:${{ github.ref_name }}
+
       - name: Build pure Python wheel + sdist
         run: |
+          rm -rf dist build *.egg-info
           python -m build
-
-      - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: wheels-${{ matrix.os }}
-          path: dist/*
-
-  publish:
-    name: Publish to PyPI
-    needs: build
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Download all wheels
-        uses: actions/download-artifact@v4
-        with:
-          pattern: wheels-*
-          path: dist/
-          merge-multiple: true
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@v1.9.0
