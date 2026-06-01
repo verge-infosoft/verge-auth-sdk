@@ -2,6 +2,7 @@
 [![Python Versions](https://img.shields.io/pypi/pyversions/verge-auth-sdk.svg)](https://pypi.org/project/verge-auth-sdk/)
 [![License](https://img.shields.io/github/license/verge-infosoft/verge-auth-sdk)](LICENSE)
 
+
 # Verge Auth SDK
 
 **Enterprise Authentication & RBAC for FastAPI Applications**
