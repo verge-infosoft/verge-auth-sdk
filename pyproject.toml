@@ -1,28 +1,56 @@
 [project]
+
 name = "verge-auth-sdk"
-version = "0.1.107"
+
+version = "0.1.101"
+
 description = "Secure centralized authentication SDK for FastAPI microservices"
+
 readme = "README.md"
+
 requires-python = ">=3.8"
+
 license = { text = "MIT" }
 
+
+
 authors = [
+
     { name = "Verge Infosoft", email = "contactus@vergeinfosoft.com" }
+
 ]
+
+
 
 dependencies = [
+
     "fastapi",
+
     "httpx",
+
     "python-dotenv"
+
 ]
 
+
+
 [project.urls]
+
 Homepage = "https://www.vergeinfosoft.com"
 
+
+
 [build-system]
+
 requires = ["setuptools>=61.0", "wheel"]
+
 build-backend = "setuptools.build_meta"
 
+
+
 [tool.setuptools.packages.find]
+
 where = ["."]
+
 include = ["verge_auth_sdk*"]
+
