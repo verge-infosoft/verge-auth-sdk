@@ -370,7 +370,21 @@ def add_central_auth(app: FastAPI):
 
         if not token:
             log(f"No token found, redirecting to login: {login_url}")
-            return RedirectResponse(login_url, status_code=302)
+            # Check if request is XHR/API request (browser won't follow cross-origin 302 for XHR)
+            accept_header = request.headers.get("accept", "")
+            requested_with = request.headers.get("x-requested-with", "")
+            is_xhr = "application/json" in accept_header or requested_with == "XMLHttpRequest"
+
+            if is_xhr:
+                # Return 401 with redirect URL in header for XHR requests
+                return JSONResponse(
+                    {"detail": "Authentication required", "redirect_url": login_url},
+                    status_code=401,
+                    headers={"X-Auth-Redirect-Url": login_url}
+                )
+            else:
+                # Return 302 redirect for browser navigation
+                return RedirectResponse(login_url, status_code=302)
 
         # ------------------------------------------------------------
         # Step 3 — Verify JWT
