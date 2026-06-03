@@ -143,6 +143,7 @@ async def load_public_key(force: bool = False):
 def add_central_auth(app: FastAPI):
     global AUTH_BASE_URL
     AUTH_BASE_URL = os.getenv("AUTH_BASE_URL", "").rstrip("/")
+    AUTH_FRONTEND_URL = os.getenv("AUTH_FRONTEND_URL", "").rstrip("/")
     SERVICE_NAME = os.getenv("SERVICE_NAME")
     SERVICE_BASE_URL = os.getenv("SERVICE_BASE_URL")
 
@@ -358,8 +359,12 @@ def add_central_auth(app: FastAPI):
             if not frontend_path:
                 frontend_path = '/'
 
+        # login_url = (
+        #     f"{AUTH_BASE_URL}/login?"
+        #     f"redirect_uri={SERVICE_FRONTEND_URL}{frontend_path}"
+        # )
         login_url = (
-            f"{AUTH_BASE_URL}/login?"
+            f"{AUTH_FRONTEND_URL}/login?"
             f"redirect_uri={SERVICE_FRONTEND_URL}{frontend_path}"
         )
 
