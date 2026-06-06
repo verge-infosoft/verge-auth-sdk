@@ -109,6 +109,29 @@ def log(msg: str):
 
 
 # -------------------------------------------------------------------
+# Permission Resolver (for Redis caching mode)
+# -------------------------------------------------------------------
+
+async def resolve_permissions_from_auth_server(permission_set_id: str) -> List[str]:
+    """
+    Fetch permissions from Verge Auth API using permission_set_id.
+    Used when PERMISSIONS_IN_TOKEN=false (Redis caching mode).
+    """
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get(
+                f"{AUTH_BASE_URL}/permissions/resolve",
+                params={"permission_set_id": permission_set_id}
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            return data.get("permissions", [])
+    except Exception as e:
+        log(f"Failed to resolve permissions from auth server: {e}")
+        return []
+
+
+# -------------------------------------------------------------------
 # Load JWT Public Key
 # -------------------------------------------------------------------
 
@@ -422,13 +445,28 @@ def add_central_auth(app: FastAPI):
                 response.delete_cookie("verge_access")
                 return response
 
+            # Handle permission resolution (legacy vs Redis caching mode)
+            permissions = payload.get("permissions", [])
+            permission_set_id = payload.get("permission_set_id")
+            
+            if permission_set_id and not permissions:
+                # Redis caching mode: fetch permissions from auth server
+                log(f"Detected Redis caching mode, resolving permissions for set: {permission_set_id}")
+                permissions = await resolve_permissions_from_auth_server(permission_set_id)
+                log(f"Resolved {len(permissions)} permissions from auth server")
+            elif permissions:
+                # Legacy mode: permissions are in JWT
+                log(f"Legacy mode: using {len(permissions)} permissions from JWT")
+            else:
+                log("No permissions found in JWT")
+
             request.state.auth = {
                 "auth_user_id": user_id,
                 "organization_id": organization_id,
                 "tenant_id": payload.get("tenant_id"),
                 "scope": scope,
                 "roles": payload.get("roles", []),
-                "permissions": payload.get("permissions", []),
+                "permissions": permissions,
             }
         except jwt.ExpiredSignatureError:
             log("JWT expired, redirecting to login")
