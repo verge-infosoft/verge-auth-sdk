@@ -282,7 +282,7 @@ def add_central_auth(app: FastAPI):
                 async with httpx.AsyncClient(timeout=60) as client:
                     resp = await client.post(
                         f"{AUTH_BASE_URL}/auth/exchange",
-                        json={"code": code},
+                        json={"code": code, "service_name": SERVICE_NAME},
                         headers={
                             "X-Client-Id": CLIENT_ID or "",
                             "X-Client-Secret": CLIENT_SECRET or "",
