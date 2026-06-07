@@ -316,13 +316,13 @@ def add_central_auth(app: FastAPI):
             except httpx.HTTPStatusError as e:
                 log(f"Auth code exchange failed: {e.response.status_code}")
                 return RedirectResponse(
-                    f"{AUTH_BASE_URL}/login?redirect_uri={SERVICE_FRONTEND_URL}/auth/callback&reason=exchange_failed",
+                    f"{AUTH_BASE_URL}/login?redirect_url={SERVICE_FRONTEND_URL}/auth/callback&reason=exchange_failed",
                     status_code=302,
                 )
             except Exception as e:
                 log(f"Auth code exchange error: {e}")
                 return RedirectResponse(
-                    f"{AUTH_BASE_URL}/login?redirect_uri={SERVICE_FRONTEND_URL}/auth/callback&reason=exchange_error",
+                    f"{AUTH_BASE_URL}/login?redirect_url={SERVICE_FRONTEND_URL}/auth/callback&reason=exchange_error",
                     status_code=302,
                 )
 
@@ -372,7 +372,7 @@ def add_central_auth(app: FastAPI):
         # Use /auth/callback for login redirect (matches React SDK default)
         login_url = (
             f"{AUTH_FRONTEND_URL}/login?"
-            f"redirect_uri={SERVICE_FRONTEND_URL}/auth/callback"
+            f"redirect_url={SERVICE_FRONTEND_URL}/auth/callback"
         )
 
         if not token:
@@ -423,7 +423,7 @@ def add_central_auth(app: FastAPI):
                 log("JWT missing required fields (user_id, organization_id, or scope)")
                 response = RedirectResponse(
                     f"{AUTH_BASE_URL}/login?"
-                    f"redirect_uri={SERVICE_FRONTEND_URL}/auth/callback&reason=invalid_token",
+                    f"redirect_url={SERVICE_FRONTEND_URL}/auth/callback&reason=invalid_token",
                     status_code=302,
                 )
                 response.delete_cookie("verge_access")
@@ -456,7 +456,7 @@ def add_central_auth(app: FastAPI):
             log("JWT expired, redirecting to login")
             response = RedirectResponse(
                 f"{AUTH_BASE_URL}/login?"
-                f"redirect_uri={SERVICE_FRONTEND_URL}/auth/callback&reason=expired",
+                f"redirect_url={SERVICE_FRONTEND_URL}/auth/callback&reason=expired",
                 status_code=302,
             )
             response.delete_cookie("verge_access")
@@ -466,7 +466,7 @@ def add_central_auth(app: FastAPI):
             log("JWT audience mismatch, redirecting to login")
             response = RedirectResponse(
                 f"{AUTH_BASE_URL}/login?"
-                f"redirect_uri={SERVICE_FRONTEND_URL}/auth/callback&reason=invalid_audience",
+                f"redirect_url={SERVICE_FRONTEND_URL}/auth/callback&reason=invalid_audience",
                 status_code=302,
             )
             response.delete_cookie("verge_access")
@@ -476,7 +476,7 @@ def add_central_auth(app: FastAPI):
             log(f"Invalid JWT: {str(e)}")
             response = RedirectResponse(
                 f"{AUTH_BASE_URL}/login?"
-                f"redirect_uri={SERVICE_FRONTEND_URL}/auth/callback&reason=invalid",
+                f"redirect_url={SERVICE_FRONTEND_URL}/auth/callback&reason=invalid",
                 status_code=302,
             )
             response.delete_cookie("verge_access")
