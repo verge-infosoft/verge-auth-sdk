@@ -205,6 +205,7 @@ def add_central_auth(app: FastAPI):
                 json={
                     "service_name": SERVICE_NAME,
                     "base_url": SERVICE_BASE_URL,
+                    "frontend_url": SERVICE_FRONTEND_URL,
                 },
                 headers={
                     "X-Client-Id": CLIENT_ID or "",
