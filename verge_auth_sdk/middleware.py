@@ -24,9 +24,6 @@ from .verge_routes import router as verge_routes_router
 # -------------------------------------------------------------------
 
 def match_path_pattern(pattern: str, path: str) -> bool:
-    """
-    Match a concrete path against a route pattern (e.g., /users/123 matches /users/{id}).
-    """
     pattern_parts = pattern.rstrip("/").split("/")
     path_parts = path.rstrip("/").split("/")
     
@@ -35,7 +32,6 @@ def match_path_pattern(pattern: str, path: str) -> bool:
     
     for pattern_part, path_part in zip(pattern_parts, path_parts):
         if pattern_part.startswith("{") and pattern_part.endswith("}"):
-            # This is a parameter, it matches anything
             continue
         if pattern_part != path_part:
             return False
@@ -176,8 +172,7 @@ def add_central_auth(app: FastAPI):
 
     AUTH_REGISTER_URL = f"{AUTH_BASE_URL}/service-registry/register"
     AUTH_ROUTE_SYNC_URL = f"{AUTH_BASE_URL}/route-sync"
-    SERVICE_FRONTEND_URL = os.getenv("SERVICE_FRONTEND_URL")
-
+    SERVICE_FRONTEND_URL = os.getenv("SERVICE_FRONTEND_URL") 
     app.include_router(verge_routes_router)
 
     # ----------------------------------------------------------------
@@ -321,13 +316,13 @@ def add_central_auth(app: FastAPI):
             except httpx.HTTPStatusError as e:
                 log(f"Auth code exchange failed: {e.response.status_code}")
                 return RedirectResponse(
-                    f"{AUTH_BASE_URL}/login?redirect_uri={SERVICE_FRONTEND_URL}{request.url.path}&reason=exchange_failed",
+                    f"{AUTH_BASE_URL}/login?redirect_uri={SERVICE_FRONTEND_URL}/auth/callback&reason=exchange_failed",
                     status_code=302,
                 )
             except Exception as e:
                 log(f"Auth code exchange error: {e}")
                 return RedirectResponse(
-                    f"{AUTH_BASE_URL}/login?redirect_uri={SERVICE_FRONTEND_URL}{request.url.path}&reason=exchange_error",
+                    f"{AUTH_BASE_URL}/login?redirect_uri={SERVICE_FRONTEND_URL}/auth/callback&reason=exchange_error",
                     status_code=302,
                 )
 
@@ -374,21 +369,10 @@ def add_central_auth(app: FastAPI):
 
         frontend_target = f"{SERVICE_FRONTEND_URL}{request.url.path}"
 
-        # Convert API path to frontend path for login redirect
-        frontend_path = request.url.path
-        if frontend_path.startswith('/api/'):
-            # Remove /api prefix for frontend
-            frontend_path = frontend_path[4:]  # Use slicing instead of replace
-            if not frontend_path:
-                frontend_path = '/'
-
-        # login_url = (
-        #     f"{AUTH_BASE_URL}/login?"
-        #     f"redirect_uri={SERVICE_FRONTEND_URL}{frontend_path}"
-        # )
+        # Use /auth/callback for login redirect (matches React SDK default)
         login_url = (
             f"{AUTH_FRONTEND_URL}/login?"
-            f"redirect_uri={SERVICE_FRONTEND_URL}{frontend_path}"
+            f"redirect_uri={SERVICE_FRONTEND_URL}/auth/callback"
         )
 
         if not token:
@@ -439,7 +423,7 @@ def add_central_auth(app: FastAPI):
                 log("JWT missing required fields (user_id, organization_id, or scope)")
                 response = RedirectResponse(
                     f"{AUTH_BASE_URL}/login?"
-                    f"redirect_uri={frontend_target}&reason=invalid_token",
+                    f"redirect_uri={SERVICE_FRONTEND_URL}/auth/callback&reason=invalid_token",
                     status_code=302,
                 )
                 response.delete_cookie("verge_access")
@@ -472,7 +456,7 @@ def add_central_auth(app: FastAPI):
             log("JWT expired, redirecting to login")
             response = RedirectResponse(
                 f"{AUTH_BASE_URL}/login?"
-                f"redirect_uri={SERVICE_FRONTEND_URL}{frontend_path}&reason=expired",
+                f"redirect_uri={SERVICE_FRONTEND_URL}/auth/callback&reason=expired",
                 status_code=302,
             )
             response.delete_cookie("verge_access")
@@ -482,7 +466,7 @@ def add_central_auth(app: FastAPI):
             log("JWT audience mismatch, redirecting to login")
             response = RedirectResponse(
                 f"{AUTH_BASE_URL}/login?"
-                f"redirect_uri={SERVICE_FRONTEND_URL}{frontend_path}&reason=invalid_audience",
+                f"redirect_uri={SERVICE_FRONTEND_URL}/auth/callback&reason=invalid_audience",
                 status_code=302,
             )
             response.delete_cookie("verge_access")
@@ -492,7 +476,7 @@ def add_central_auth(app: FastAPI):
             log(f"Invalid JWT: {str(e)}")
             response = RedirectResponse(
                 f"{AUTH_BASE_URL}/login?"
-                f"redirect_uri={SERVICE_FRONTEND_URL}{frontend_path}&reason=invalid",
+                f"redirect_uri={SERVICE_FRONTEND_URL}/auth/callback&reason=invalid",
                 status_code=302,
             )
             response.delete_cookie("verge_access")
