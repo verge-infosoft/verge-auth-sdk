@@ -543,13 +543,24 @@ def add_central_auth(app: FastAPI):
         else:
             log(f"Route found directly: {original_path}")
 
+        # Resolve the matched route PATTERN so parameterized routes map to their
+        # registered permission key (e.g. /api/job-portal/jobs/1 -> /api/job-portal/jobs/{job_id}).
+        # Without this, the concrete path with real IDs is used and never matches the
+        # parameterized permission stored in the auth server.
+        matched_pattern = None
+        for route in REGISTERED_ROUTES:
+            if route['method'] == method and match_path_pattern(route['path'], route_path):
+                matched_pattern = route['path']
+                break
+
         # Use standard permission format that matches auth server (no trailing slash)
-        permission_path = route_path.rstrip('/')  # Remove trailing slash for permissions
+        permission_path = (matched_pattern or route_path).rstrip('/')  # Remove trailing slash for permissions
         required_key = f"{SERVICE_NAME}:{permission_path}:{method}".lower()
 
         log(f"Request URL: {request.url}")
         log(f"Original path: {original_path}")
         log(f"Route path: {route_path}")
+        log(f"Matched pattern: {matched_pattern}")
         log(f"Request method: {method}")
         log(f"SERVICE_NAME: {SERVICE_NAME}")
         log(f"Detected prefix: {path_prefix}")
