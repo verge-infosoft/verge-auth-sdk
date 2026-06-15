@@ -187,9 +187,12 @@ def add_central_auth(app: FastAPI):
     # ----------------------------------------------------------------
     @app.on_event("startup")
     async def verge_bootstrap():
-        await load_public_key(force=True)
-        await asyncio.sleep(1)
-
+        # ------------------------------------------------------------
+        # Step 1 — Populate registered routes FIRST (local, never fails).
+        # This must run before any network call so that parameterized
+        # route matching always works even if the auth server is briefly
+        # unreachable during container startup.
+        # ------------------------------------------------------------
         REGISTERED_ROUTES.clear()
 
         for route in app.routes:
@@ -205,37 +208,57 @@ def add_central_auth(app: FastAPI):
                         {"path": path, "method": method}
                     )
 
-        async with httpx.AsyncClient() as client:
-            await post_with_retries(
-                client,
-                AUTH_REGISTER_URL,
-                json={
-                    "service_name": SERVICE_NAME,
-                    "base_url": SERVICE_BASE_URL,
-                    "frontend_url": SERVICE_FRONTEND_URL,
-                },
-                headers={
-                    "X-Client-Id": CLIENT_ID or "",
-                    "X-Client-Secret": CLIENT_SECRET or "",
-                    "X-Verge-Service-Secret": VERGE_SERVICE_SECRET or "",
-                },
-            )
+        log(f"Registered {len(REGISTERED_ROUTES)} routes at startup")
 
-            await post_with_retries(
-                client,
-                AUTH_ROUTE_SYNC_URL,
-                json={
-                    "service_name": SERVICE_NAME,
-                    "base_url": SERVICE_BASE_URL,
-                    "routes": REGISTERED_ROUTES,
-                },
-                headers={
-                    "X-Client-Id": CLIENT_ID or "",
-                    "X-Client-Secret": CLIENT_SECRET or "",
-                    "X-Verge-Service-Secret": VERGE_SERVICE_SECRET or "",
-                },
-                timeout=20,
-            )
+        # ------------------------------------------------------------
+        # Step 2 — Load the JWT public key (resilient: failures here must
+        # not prevent route registration; it is lazily reloaded on the
+        # first request if needed).
+        # ------------------------------------------------------------
+        try:
+            await load_public_key(force=True)
+        except Exception as e:
+            log(f"Startup load_public_key failed (will retry lazily): {e}")
+
+        await asyncio.sleep(1)
+
+        # ------------------------------------------------------------
+        # Step 3 — Register service & sync routes (resilient).
+        # ------------------------------------------------------------
+        try:
+            async with httpx.AsyncClient() as client:
+                await post_with_retries(
+                    client,
+                    AUTH_REGISTER_URL,
+                    json={
+                        "service_name": SERVICE_NAME,
+                        "base_url": SERVICE_BASE_URL,
+                        "frontend_url": SERVICE_FRONTEND_URL,
+                    },
+                    headers={
+                        "X-Client-Id": CLIENT_ID or "",
+                        "X-Client-Secret": CLIENT_SECRET or "",
+                        "X-Verge-Service-Secret": VERGE_SERVICE_SECRET or "",
+                    },
+                )
+
+                await post_with_retries(
+                    client,
+                    AUTH_ROUTE_SYNC_URL,
+                    json={
+                        "service_name": SERVICE_NAME,
+                        "base_url": SERVICE_BASE_URL,
+                        "routes": REGISTERED_ROUTES,
+                    },
+                    headers={
+                        "X-Client-Id": CLIENT_ID or "",
+                        "X-Client-Secret": CLIENT_SECRET or "",
+                        "X-Verge-Service-Secret": VERGE_SERVICE_SECRET or "",
+                    },
+                    timeout=20,
+                )
+        except Exception as e:
+            log(f"Startup service/route sync failed: {e}")
 
     # ----------------------------------------------------------------
     # Central Auth Middleware
