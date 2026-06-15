@@ -24,19 +24,26 @@ from .verge_routes import router as verge_routes_router
 # -------------------------------------------------------------------
 
 def match_path_pattern(pattern: str, path: str) -> bool:
-    pattern_parts = pattern.rstrip("/").split("/")
-    path_parts = path.rstrip("/").split("/")
-    
+    pattern_parts = [part for part in pattern.split("/") if part]
+    path_parts = [part for part in path.split("/") if part]
+
     if len(pattern_parts) != len(path_parts):
         return False
-    
+
     for pattern_part, path_part in zip(pattern_parts, path_parts):
         if pattern_part.startswith("{") and pattern_part.endswith("}"):
             continue
         if pattern_part != path_part:
             return False
-    
+
     return True
+
+
+def find_registered_route(path: str, method: str) -> dict | None:
+    for route in REGISTERED_ROUTES:
+        if route["method"] == method and match_path_pattern(route["path"], path):
+            return route
+    return None
 
 
 # -------------------------------------------------------------------
@@ -496,14 +503,9 @@ def add_central_auth(app: FastAPI):
         # Auto-detect if we need to add a prefix based on registered routes
         route_path = original_path
         path_prefix = ""
+        matched_route = find_registered_route(original_path, method)
 
-        # Check if the original path exists in registered routes (using pattern matching)
-        direct_match = any(
-            match_path_pattern(route['path'], original_path) and route['method'] == method
-            for route in REGISTERED_ROUTES
-        )
-
-        if not direct_match:
+        if not matched_route:
             # Try to find a matching route by adding common prefixes
             common_prefixes = ["/api", "/v1", "/api/v1", "/v2", "/api/v2"]
 
@@ -513,12 +515,11 @@ def add_central_auth(app: FastAPI):
                 potential_paths = [potential_path, potential_path + "/", potential_path.rstrip('/') + '/']
 
                 for path_variant in potential_paths:
-                    if any(
-                        match_path_pattern(route['path'], path_variant) and route['method'] == method
-                        for route in REGISTERED_ROUTES
-                    ):
+                    candidate_route = find_registered_route(path_variant, method)
+                    if candidate_route:
                         route_path = path_variant
                         path_prefix = prefix
+                        matched_route = candidate_route
                         log(f"Auto-detected path prefix: {original_path} -> {route_path}")
                         break
                 if route_path != original_path:
@@ -529,16 +530,16 @@ def add_central_auth(app: FastAPI):
                 # Fallback: assume /api prefix if no route found
                 # Try with trailing slash first
                 fallback_path = "/api" + original_path + "/"
-                if any(
-                    match_path_pattern(route['path'], fallback_path) and route['method'] == method
-                    for route in REGISTERED_ROUTES
-                ):
+                fallback_route = find_registered_route(fallback_path, method)
+                if fallback_route:
                     route_path = fallback_path
                     path_prefix = "/api"
+                    matched_route = fallback_route
                     log(f"Fallback: Using /api prefix with trailing slash -> {route_path}")
                 else:
                     route_path = "/api" + original_path
                     path_prefix = "/api"
+                    matched_route = find_registered_route(route_path, method)
                     log(f"Fallback: Using /api prefix -> {route_path}")
         else:
             log(f"Route found directly: {original_path}")
@@ -547,11 +548,7 @@ def add_central_auth(app: FastAPI):
         # registered permission key (e.g. /api/job-portal/jobs/1 -> /api/job-portal/jobs/{job_id}).
         # Without this, the concrete path with real IDs is used and never matches the
         # parameterized permission stored in the auth server.
-        matched_pattern = None
-        for route in REGISTERED_ROUTES:
-            if route['method'] == method and match_path_pattern(route['path'], route_path):
-                matched_pattern = route['path']
-                break
+        matched_pattern = matched_route['path'] if matched_route else None
 
         # Use standard permission format that matches auth server (no trailing slash)
         permission_path = (matched_pattern or route_path).rstrip('/')  # Remove trailing slash for permissions
