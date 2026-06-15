@@ -24,11 +24,11 @@ authors = [
 
 dependencies = [
 
-    "fastapi",
+    "fastapi==0.135.2",
 
-    "httpx",
+    "httpx==0.28.1",
 
-    "python-dotenv"
+    "python-dotenv==1.2.2"
 
 ]
 
