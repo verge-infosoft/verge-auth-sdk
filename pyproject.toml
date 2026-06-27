@@ -2,7 +2,7 @@
 
 name = "verge-auth-sdk"
 
-version = "0.1.120"
+version = "0.1.121"
 
 description = "Secure centralized authentication SDK for FastAPI microservices"
 
