@@ -477,11 +477,17 @@ def add_central_auth(app: FastAPI):
 
             request.state.auth = {
                 "auth_user_id": user_id,
+                "email": payload.get("email", ""),
+                "first_name": payload.get("first_name", ""),
+                "last_name": payload.get("last_name", ""),
                 "organization_id": organization_id,
+                "organization_name": payload.get("organization_name", ""),
                 "tenant_id": payload.get("tenant_id"),
+                "tenant_name": payload.get("tenant_name", ""),
                 "scope": scope,
                 "roles": payload.get("roles", []),
                 "permissions": permissions,
+                "is_super_admin": payload.get("is_super_admin", False),
             }
         except jwt.ExpiredSignatureError:
             log("JWT expired, redirecting to login")
